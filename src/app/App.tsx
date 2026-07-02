@@ -382,47 +382,42 @@ function JobBubble({
 
       <div className="px-5 flex flex-col gap-4">
         {/* Job # + Task + Paperwork */}
-        <div className="flex items-start gap-4">
-          {/* Big job number */}
-          <div className="flex flex-col gap-1">
+        <div className="flex items-stretch gap-0 rounded-2xl overflow-hidden border border-border bg-muted/30">
+          {/* Big job number — wider left column */}
+          <div className="flex flex-col gap-1.5 px-4 py-3.5 flex-[3] min-w-0 focus-within:bg-primary/4 transition-colors">
             <Label>Job #</Label>
-            <div className="flex items-end gap-2">
-              <span
-                className="text-5xl font-extrabold text-primary leading-none"
-                style={{ fontVariantNumeric: "tabular-nums", letterSpacing: "-0.03em" }}
-              >
-                {job.jobNumber || "—"}
-              </span>
-              <div className="flex flex-col gap-1 mb-1">
-                <button onClick={() => onChange({ jobNumber: String(Number(job.jobNumber || 1000) + 1) })}
-                  className="w-6 h-6 rounded-lg bg-muted border border-border text-muted-foreground hover:text-primary hover:border-primary/40 flex items-center justify-center text-[10px] font-bold transition-colors">▲</button>
-                <button onClick={() => onChange({ jobNumber: String(Math.max(1, Number(job.jobNumber || 1) - 1)) })}
-                  className="w-6 h-6 rounded-lg bg-muted border border-border text-muted-foreground hover:text-primary hover:border-primary/40 flex items-center justify-center text-[10px] font-bold transition-colors">▼</button>
-              </div>
-            </div>
+            <input
+              type="text"
+              value={job.jobNumber}
+              onChange={(e) => onChange({ jobNumber: e.target.value.replace(/\D/g, "").slice(0, 7) })}
+              placeholder="100000"
+              inputMode="numeric"
+              className="bg-transparent w-full text-5xl font-extrabold text-primary leading-none focus:outline-none placeholder:text-primary/20"
+              style={{ fontVariantNumeric: "tabular-nums", letterSpacing: "-0.03em" }}
+            />
           </div>
 
-          <div className="w-px self-stretch bg-border mx-1" />
+          <div className="w-px bg-border flex-shrink-0" />
 
-          {/* Task + paperwork */}
-          <div className="flex-1 flex flex-col gap-3">
+          {/* Task + paperwork — narrower right column */}
+          <div className="flex flex-col gap-3 px-4 py-3.5 flex-[2] min-w-0">
             <div>
               <Label>Task Code</Label>
-              <div className="mt-1.5 flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-muted/60 focus-within:border-primary/40 transition-colors">
+              <div className="mt-1.5 flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-card focus-within:border-primary/40 transition-colors">
                 <FileText size={12} className="text-muted-foreground flex-shrink-0" />
                 <input
                   type="text"
                   value={job.task}
                   onChange={(e) => onChange({ task: e.target.value.toUpperCase().slice(0, 6) })}
                   placeholder="A, BC…"
-                  className="flex-1 bg-transparent text-sm font-bold font-mono text-foreground placeholder:text-muted-foreground/40 focus:outline-none tracking-widest"
+                  className="flex-1 bg-transparent text-sm font-bold font-mono text-foreground placeholder:text-muted-foreground/40 focus:outline-none tracking-widest min-w-0"
                 />
               </div>
             </div>
             <button
               onClick={() => onChange({ paperwork: !job.paperwork })}
               className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-all ${
-                job.paperwork ? "bg-primary/8 border-primary/25 " : "bg-muted/60 border-border hover:border-primary/20"
+                job.paperwork ? "bg-primary/8 border-primary/25" : "bg-card border-border hover:border-primary/20"
               }`}
             >
               {job.paperwork
@@ -434,12 +429,6 @@ function JobBubble({
               {job.paperwork && <span className="ml-auto text-[10px] font-mono bg-primary/15 text-primary px-1.5 py-0.5 rounded-full">✓</span>}
             </button>
           </div>
-        </div>
-
-        {/* Status */}
-        <div className="flex flex-col gap-1.5">
-          <Label>Status</Label>
-          <StatusPills value={job.status} onChange={(s) => onChange({ status: s })} />
         </div>
 
         {/* Divider */}
@@ -477,7 +466,10 @@ function JobBubble({
               <input
                 type="time"
                 value={job.startTime}
-                onChange={(e) => onChange({ startTime: e.target.value })}
+                onChange={(e) => {
+                  const st = e.target.value;
+                  onChange({ startTime: st, status: st ? (job.stopTime ? "completed" : "in-progress") : "not-started" });
+                }}
                 className="bg-transparent text-sm font-bold font-mono text-foreground focus:outline-none w-full"
               />
             </div>
@@ -490,7 +482,10 @@ function JobBubble({
               <input
                 type="time"
                 value={job.stopTime}
-                onChange={(e) => onChange({ stopTime: e.target.value })}
+                onChange={(e) => {
+                  const sp = e.target.value;
+                  onChange({ stopTime: sp, status: sp && job.startTime ? "completed" : job.startTime ? "in-progress" : "not-started" });
+                }}
                 className="bg-transparent text-sm font-bold font-mono text-foreground focus:outline-none w-full"
               />
             </div>
@@ -574,8 +569,8 @@ export default function App() {
   const [date, setDate] = useState(today);
   const [driver, setDriver] = useState("Dion Lewis");
   const [jobs, setJobs] = useState<Job[]>([
-    makeJob(1, "1042"),
-    makeJob(2, "1043"),
+    makeJob(1, "104200"),
+    makeJob(2, "104201"),
   ]);
 
   const updateJob = useCallback((id: number, patch: Partial<Job>) => {
@@ -587,7 +582,7 @@ export default function App() {
   }, []);
 
   const addJob = () => {
-    const lastNum = jobs.length ? Number(jobs[jobs.length - 1].jobNumber) + 1 : 1044;
+    const lastNum = jobs.length ? Number(jobs[jobs.length - 1].jobNumber) + 1 : 104202;
     setJobs((prev) => [...prev, makeJob(nextId++, String(lastNum))]);
   };
 
