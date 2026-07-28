@@ -5,6 +5,7 @@ export interface QueuedJob {
   location: string;
   startTime: string;
   stopTime: string;
+  totalTime?: string;
 }
 
 export interface DaySubmissionPayload {

@@ -76,7 +76,7 @@ app.post('/api/submit-day', async (req, res) => {
     }
 
     for (const job of jobs) {
-      const totalJobTime = calcJobDuration(job.startTime, job.stopTime);
+      const totalJobTime = job.totalTime || calcJobDuration(job.startTime, job.stopTime);
 
       await db.run(
         `INSERT INTO delivery_logs 
