@@ -104,6 +104,34 @@ app.post('/api/submit-day', async (req, res) => {
   }
 });
 
+// Delete a specific delivery log by ID
+app.delete('/api/delivery-logs/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await db.run('DELETE FROM delivery_logs WHERE id = ?', [id]);
+    if (result.changes > 0) {
+      res.json({ success: true, message: `Log #${id} deleted successfully.` });
+    } else {
+      res.status(404).json({ error: `Log #${id} not found.` });
+    }
+  } catch (error) {
+    console.error('Delete log error:', error);
+    res.status(500).json({ error: 'Failed to delete record from database.' });
+  }
+});
+
+// Delete all logs or clear database records
+app.delete('/api/delivery-logs', async (req, res) => {
+  try {
+    await db.run('DELETE FROM delivery_logs');
+    res.json({ success: true, message: 'All delivery logs cleared successfully.' });
+  } catch (error) {
+    console.error('Purge logs error:', error);
+    res.status(500).json({ error: 'Failed to purge records from database.' });
+  }
+});
+
+
 // Admin dashboard data feed for the billing/admin page
 // Admin dashboard data feed (UPDATED for date filtering)
 app.get('/api/billing-export', async (req, res) => {

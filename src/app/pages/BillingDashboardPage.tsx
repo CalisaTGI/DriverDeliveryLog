@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
-import { FileSpreadsheet, FileText, Loader, Search, CalendarDays } from "lucide-react";
+import { FileSpreadsheet, FileText, Loader, Search, CalendarDays, WifiOff, Trash2 } from "lucide-react";
 import ExcelJS from "exceljs";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { toast } from "sonner";
 import { getApiUrl } from "../lib/apiConfig";
+import { saveCachedLogsIdb, getCachedLogsIdb } from "../../offline/db";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
 
 interface DatabaseLog {
   id: number;
@@ -19,9 +22,12 @@ interface DatabaseLog {
   arrival_back_time: string;
 }
 
+const ENABLE_DELETE_ROW_UI = false;
+
 export default function BillingDashboardPage() {
   const [logs, setLogs] = useState<DatabaseLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isOfflineLoaded, setIsOfflineLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDriver, setSelectedDriver] = useState("All Drivers");
 
@@ -41,17 +47,55 @@ export default function BillingDashboardPage() {
     return adjusted.toISOString().split("T")[0];
   });
 
-  // Fetch from the backend whenever the dates change
+  const [logToDelete, setLogToDelete] = useState<DatabaseLog | null>(null);
+
+  const confirmDeleteLog = async () => {
+    if (!logToDelete) return;
+    try {
+      const res = await fetch(getApiUrl(`/api/delivery-logs/${logToDelete.id}`), {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server returned status ${res.status}`);
+      }
+      const updatedLogs = logs.filter((item) => item.id !== logToDelete.id);
+      setLogs(updatedLogs);
+      saveCachedLogsIdb(updatedLogs);
+      toast.success(`Successfully deleted log record #${logToDelete.id}`);
+    } catch (err: any) {
+      console.error("Delete operation failed:", err);
+      toast.error(err?.message || "Failed to delete log from server");
+    } finally {
+      setLogToDelete(null);
+    }
+  };
+
+  // Fetch from backend or fall back to IndexedDB cached logs
   useEffect(() => {
     setLoading(true);
+    setIsOfflineLoaded(false);
     fetch(getApiUrl(`/api/billing-export?start=${startDate}&end=${endDate}`))
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Server returned error status");
+        return res.json();
+      })
       .then((data) => {
-        setLogs(data);
+        if (Array.isArray(data)) {
+          setLogs(data);
+          saveCachedLogsIdb(data);
+        }
         setLoading(false);
       })
-      .catch((err) => {
-        console.error("Failed to read log tables:", err);
+      .catch(async (err) => {
+        console.warn("Failed to read log tables from network, trying IndexedDB cache:", err);
+        const cached = await getCachedLogsIdb();
+        if (cached && cached.length > 0) {
+          setLogs(cached);
+          setIsOfflineLoaded(true);
+        } else {
+          setLogs([]);
+        }
         setLoading(false);
       });
   }, [startDate, endDate]);
@@ -68,8 +112,8 @@ export default function BillingDashboardPage() {
   const filteredLogs = visibleLogs.filter((log) => {
     const matchesDriver = selectedDriver === "All Drivers" ? true : log.driver_name === selectedDriver;
     const matchesSearch =
-      log.driver_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.job_number.includes(searchTerm);
+      (log.driver_name && log.driver_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (log.job_number && log.job_number.includes(searchTerm));
     return matchesDriver && matchesSearch;
   });
 
@@ -81,7 +125,7 @@ export default function BillingDashboardPage() {
 
   const exportToExcel = async () => {
     const totalDriveMinutes = filteredLogs.reduce((sum, log) => {
-      const match = log.total_time.match(/(\d+)h\s*(\d+)m/);
+      const match = log.total_time ? log.total_time.match(/(\d+)h\s*(\d+)m/) : null;
       if (!match) return sum;
       return sum + Number(match[1]) * 60 + Number(match[2]);
     }, 0);
@@ -233,7 +277,7 @@ export default function BillingDashboardPage() {
     doc.line(signatureLineStart, labelY + 3, signatureLineEnd, labelY + 3);
 
     const totalDriveMinutes = filteredLogs.reduce((sum, log) => {
-      const match = log.total_time.match(/(\d+)h\s*(\d+)m/);
+      const match = log.total_time ? log.total_time.match(/(\d+)h\s*(\d+)m/) : null;
       if (!match) return sum;
       return sum + Number(match[1]) * 60 + Number(match[2]);
     }, 0);
@@ -254,6 +298,11 @@ export default function BillingDashboardPage() {
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Driver Delivery Time Log</h1>
+            {isOfflineLoaded && (
+              <span className="inline-flex items-center gap-1 mt-1 text-xs font-semibold text-amber-700 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-md">
+                <WifiOff size={12} /> Viewing cached records offline
+              </span>
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
@@ -348,7 +397,10 @@ export default function BillingDashboardPage() {
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-r border-slate-300 font-mono text-center w-24">Start Time</th>
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-r border-slate-300 font-mono text-center w-24">Stop Time</th>
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-r border-slate-300 font-mono text-center bg-violet-50/50 w-24">Total Time</th>
-                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 font-mono text-center w-48">Arrival Time Back at Building</th>
+                  <th className={`px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 font-mono text-center w-48 ${ENABLE_DELETE_ROW_UI ? "border-r border-slate-300" : ""}`}>Arrival Time Back at Building</th>
+                  {ENABLE_DELETE_ROW_UI && (
+                    <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 text-center w-16">Delete</th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -369,7 +421,19 @@ export default function BillingDashboardPage() {
                     <td className="px-4 py-3 text-xs font-bold font-mono text-center text-slate-600 border-r border-slate-200">{log.start_time || "—"}</td>
                     <td className="px-4 py-3 text-xs font-bold font-mono text-center text-slate-600 border-r border-slate-200">{log.stop_time || "—"}</td>
                     <td className="px-4 py-3 text-sm font-extrabold font-mono text-center text-primary border-r border-slate-200 bg-violet-50/20">{log.total_time || "—"}</td>
-                    <td className="px-4 py-3 text-xs font-bold font-mono text-center text-slate-800">{log.arrival_back_time || "—"}</td>
+                    <td className={`px-4 py-3 text-xs font-bold font-mono text-center text-slate-800 ${ENABLE_DELETE_ROW_UI ? "border-r border-slate-200" : ""}`}>{log.arrival_back_time || "—"}</td>
+                    {ENABLE_DELETE_ROW_UI && (
+                      <td className="px-3 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setLogToDelete(log)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Delete log record"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -377,6 +441,18 @@ export default function BillingDashboardPage() {
           )}
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={!!logToDelete}
+        onClose={() => setLogToDelete(null)}
+        onConfirm={confirmDeleteLog}
+        title="Delete Delivery Log Record?"
+        description={`Are you sure you want to delete log #${logToDelete?.id} for ${logToDelete?.driver_name} (Job #${logToDelete?.job_number})? This action cannot be undone.`}
+        confirmText="Delete Record"
+        cancelText="Cancel"
+        variant="destructive"
+        icon={<Trash2 size={20} />}
+      />
     </div>
   );
 }
