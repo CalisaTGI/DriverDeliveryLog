@@ -2,8 +2,11 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { Toaster } from "../components/ui/sonner";
 import { InputDialogModal } from "../components/ui/InputDialogModal";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
+import { getApiUrl } from "../lib/apiConfig";
 import { SyncStatusBadge } from "../components/SyncStatusBadge";
+import { OfflineQueueModal } from "../components/OfflineQueueModal";
 import { JobBubble } from "../components/JobBubble";
 import { SignatureCanvas } from "../components/SignatureCanvas";
 import { Dropdown } from "../components/Dropdown";
@@ -19,6 +22,11 @@ import {
   getCachedLocations,
 } from "../lib/offlineQueue";
 import {
+  saveShiftDraft,
+  getShiftDraft,
+  clearShiftDraft,
+} from "../lib/shiftDraftStorage";
+import {
   MapPin,
   Clock,
   Timer,
@@ -27,6 +35,11 @@ import {
   Plus,
   Flag,
   AlertCircle,
+  Save,
+  RotateCcw,
+  Sparkles,
+  Check,
+  Trash2,
 } from "lucide-react";
 
 export default function DriverDeliveryLogPage() {
@@ -37,17 +50,39 @@ export default function DriverDeliveryLogPage() {
     return adjusted.toISOString().split("T")[0];
   })();
 
-  const [date, setDate] = useState(today);
-  const [driver, setDriver] = useState("Dion Lewis");
-  const [jobs, setJobs] = useState<Job[]>([
-    makeJob(1, "104200"),
-    makeJob(2, "104201"),
-  ]);
+  // Restore initial state from saved active shift draft if present
+  const initialDraft = getShiftDraft();
+
+  const [date, setDate] = useState(initialDraft?.date || today);
+  const [driver, setDriver] = useState(initialDraft?.driver || "Dion Lewis");
+  const [jobs, setJobs] = useState<Job[]>(
+    initialDraft?.jobs && initialDraft.jobs.length > 0
+      ? initialDraft.jobs
+      : [makeJob(1, "104200"), makeJob(2, "104201")]
+  );
   const [isSigned, setIsSigned] = useState(false);
   const [signatureError, setSignatureError] = useState(false);
   const signatureCardRef = useRef<HTMLDivElement>(null);
-  const [arrivalTimeBack, setArrivalTimeBack] = useState("");
+  const [arrivalTimeBack, setArrivalTimeBack] = useState(
+    initialDraft?.arrivalTimeBack || ""
+  );
   const [signatureResetKey, setSignatureResetKey] = useState(0);
+  const [lastDraftSavedTime, setLastDraftSavedTime] = useState<string | null>(
+    initialDraft?.lastSavedAt
+      ? new Date(initialDraft.lastSavedAt).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null
+  );
+
+  // Auto-save active shift draft whenever form inputs change
+  useEffect(() => {
+    saveShiftDraft({ date, driver, jobs, arrivalTimeBack });
+    setLastDraftSavedTime(
+      new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    );
+  }, [date, driver, jobs, arrivalTimeBack]);
 
   const handleSignatureChange = useCallback((signed: boolean) => {
     setIsSigned(signed);
@@ -59,6 +94,20 @@ export default function DriverDeliveryLogPage() {
   const isOnline = useOnlineStatus();
   const [queuedCount, setQueuedCount] = useState<number>(() => getQueue().length);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isQueueModalOpen, setIsQueueModalOpen] = useState<boolean>(false);
+  const [isDiscardModalOpen, setIsDiscardModalOpen] = useState<boolean>(false);
+
+  const handleConfirmDiscardDraft = useCallback(() => {
+    clearShiftDraft();
+    setDate(today);
+    setDriver("Dion Lewis");
+    setJobs([makeJob(getNextJobId(), "104202")]);
+    setArrivalTimeBack("");
+    setIsSigned(false);
+    setSignatureResetKey((prev) => prev + 1);
+    setLastDraftSavedTime(null);
+    toast.info("Cleared active shift draft");
+  }, [today]);
 
   const refreshQueueCount = useCallback(() => {
     setQueuedCount(getQueue().length);
@@ -75,7 +124,7 @@ export default function DriverDeliveryLogPage() {
   // Fetch locations from backend server, falling back to local cache if offline/unreachable
   const refreshLocations = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/locations");
+      const res = await fetch(getApiUrl("/api/locations"));
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
@@ -111,7 +160,7 @@ export default function DriverDeliveryLogPage() {
 
   const handleSaveNewLocation = async (newLocName: string) => {
     try {
-      const response = await fetch("http://localhost:5000/api/locations", {
+      const response = await fetch(getApiUrl("/api/locations"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newLocName.trim() }),
@@ -153,7 +202,7 @@ export default function DriverDeliveryLogPage() {
 
     for (const item of queue) {
       try {
-        const response = await fetch("http://localhost:5000/api/submit-day", {
+        const response = await fetch(getApiUrl("/api/submit-day"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(item.payload),
@@ -235,11 +284,13 @@ export default function DriverDeliveryLogPage() {
     };
 
     const resetForm = () => {
+      clearShiftDraft();
       setJobs([makeJob(getNextJobId(), "104202")]);
       setArrivalTimeBack("");
       setIsSigned(false);
       setSignatureError(false);
       setSignatureResetKey((prev) => prev + 1);
+      setLastDraftSavedTime(null);
     };
 
     if (!isOnline) {
@@ -253,7 +304,7 @@ export default function DriverDeliveryLogPage() {
     }
 
     try {
-      const response = await fetch("http://localhost:5000/api/submit-day", {
+      const response = await fetch(getApiUrl("/api/submit-day"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -302,6 +353,7 @@ export default function DriverDeliveryLogPage() {
               queuedCount={queuedCount}
               isSyncing={isSyncing}
               onManualSync={processQueue}
+              onViewQueue={() => setIsQueueModalOpen(true)}
             />
           </div>
           <div className="inline-flex items-center gap-2 mb-2">
@@ -318,6 +370,41 @@ export default function DriverDeliveryLogPage() {
           <p className="text-muted-foreground text-xs font-mono mt-1 uppercase tracking-widest">
             Daily Route Record
           </p>
+        </div>
+
+        {/* Active Shift Draft Indicator & Quick Save Bar */}
+        <div className="bg-primary/10 border border-primary/25 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs shadow-sm">
+          <div className="flex items-center gap-2 text-primary font-bold">
+            <Save size={15} className="text-primary animate-pulse" />
+            <span>Shift In-Progress Draft Active</span>
+            {lastDraftSavedTime && (
+              <span className="text-muted-foreground font-mono text-[11px] font-normal">
+                (Auto-saved at {lastDraftSavedTime})
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                saveShiftDraft({ date, driver, jobs, arrivalTimeBack });
+                toast.success("Shift draft saved to device storage!");
+              }}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-primary/20 hover:bg-primary/30 text-primary font-bold transition-all cursor-pointer"
+            >
+              <Save size={12} />
+              Save Progress
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsDiscardModalOpen(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all cursor-pointer"
+              title="Discard draft and reset form"
+            >
+              <RotateCcw size={12} />
+              Discard
+            </button>
+          </div>
         </div>
 
         {/* Date + Driver */}
@@ -496,6 +583,26 @@ export default function DriverDeliveryLogPage() {
         confirmText="Save Location"
         cancelText="Cancel"
         icon={<MapPin size={18} />}
+      />
+
+      <OfflineQueueModal
+        isOpen={isQueueModalOpen}
+        onClose={() => setIsQueueModalOpen(false)}
+        isOnline={isOnline}
+        onSyncAll={processQueue}
+        onQueueUpdated={refreshQueueCount}
+      />
+
+      <ConfirmModal
+        isOpen={isDiscardModalOpen}
+        onClose={() => setIsDiscardModalOpen(false)}
+        onConfirm={handleConfirmDiscardDraft}
+        title="Discard In-Progress Shift Draft?"
+        description="Are you sure you want to discard your current shift draft and reset the form? All unsaved progress for this shift will be removed."
+        confirmText="Discard Shift Draft"
+        cancelText="Keep Editing"
+        variant="destructive"
+        icon={<Trash2 size={20} />}
       />
 
       <style>{`

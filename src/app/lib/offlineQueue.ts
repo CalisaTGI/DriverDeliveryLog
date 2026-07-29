@@ -64,6 +64,14 @@ export function dequeueSubmission(id: string): void {
   }
 }
 
+export function clearQueue(): void {
+  try {
+    localStorage.setItem(QUEUE_KEY, JSON.stringify([]));
+  } catch (err) {
+    console.error("Failed to clear offline queue in localStorage:", err);
+  }
+}
+
 export function cacheLocations(locations: string[]): void {
   if (!locations || locations.length === 0) return;
   try {
