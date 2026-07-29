@@ -3,6 +3,7 @@ import { FileSpreadsheet, FileText, Loader, Search, CalendarDays } from "lucide-
 import ExcelJS from "exceljs";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { getApiUrl } from "../lib/apiConfig";
 
 interface DatabaseLog {
   id: number;
@@ -43,7 +44,7 @@ export default function BillingDashboardPage() {
   // Fetch from the backend whenever the dates change
   useEffect(() => {
     setLoading(true);
-    fetch(`http://localhost:5000/api/billing-export?start=${startDate}&end=${endDate}`)
+    fetch(getApiUrl(`/api/billing-export?start=${startDate}&end=${endDate}`))
       .then((res) => res.json())
       .then((data) => {
         setLogs(data);
