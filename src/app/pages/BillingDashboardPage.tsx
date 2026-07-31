@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileSpreadsheet, FileText, Loader, Search, CalendarDays, WifiOff, Trash2 } from "lucide-react";
+import { FileSpreadsheet, FileText, Loader, Search, CalendarDays, WifiOff, Trash2, Eye } from "lucide-react";
 import ExcelJS from "exceljs";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { getApiUrl } from "../lib/apiConfig";
 import { saveCachedLogsIdb, getCachedLogsIdb } from "../../offline/db";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
+import { LogDetailsModal, DatabaseLog } from "../components/ui/LogDetailsModal";
 
 interface DatabaseLog {
   id: number;
@@ -48,6 +49,7 @@ export default function BillingDashboardPage() {
   });
 
   const [logToDelete, setLogToDelete] = useState<DatabaseLog | null>(null);
+  const [selectedLogForDetails, setSelectedLogForDetails] = useState<DatabaseLog | null>(null);
 
   const confirmDeleteLog = async () => {
     if (!logToDelete) return;
@@ -388,6 +390,7 @@ export default function BillingDashboardPage() {
             <table className="w-full text-left border-collapse min-w-[1000px]">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-400">
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 text-center w-24 border-r border-slate-300">Details</th>
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-r border-slate-300 font-sans w-28">Date</th>
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-r border-slate-300 font-sans">Driver</th>
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-r border-slate-300 font-mono w-28">Job Number</th>
@@ -405,7 +408,25 @@ export default function BillingDashboardPage() {
               </thead>
               <tbody>
                 {filteredLogs.map((log, idx) => (
-                  <tr key={log.id} className={`border-b border-slate-300 transition-colors hover:bg-slate-50 ${idx % 2 === 1 ? "bg-slate-50/40" : "bg-white"}`}>
+                  <tr
+                    key={log.id}
+                    onClick={() => setSelectedLogForDetails(log)}
+                    className={`border-b border-slate-300 transition-colors cursor-pointer hover:bg-violet-50/50 ${idx % 2 === 1 ? "bg-slate-50/40" : "bg-white"}`}
+                  >
+                    <td className="px-3 py-3 text-center border-r border-slate-200">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedLogForDetails(log);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-primary/10 text-primary hover:bg-primary hover:text-white transition-all cursor-pointer shadow-2xs"
+                        title="View complete record details"
+                      >
+                        <Eye size={13} />
+                        View
+                      </button>
+                    </td>
                     <td className="px-4 py-3 text-xs font-bold font-sans text-slate-600 border-r border-slate-200">{formatDisplayDate(log.log_date)}</td>
                     <td className="px-4 py-3 text-sm font-extrabold text-slate-900 border-r border-slate-200">{log.driver_name}</td>
                     <td className="px-4 py-3 text-sm font-bold font-mono text-primary border-r border-slate-200">{log.job_number}</td>
@@ -426,7 +447,10 @@ export default function BillingDashboardPage() {
                       <td className="px-3 py-3 text-center">
                         <button
                           type="button"
-                          onClick={() => setLogToDelete(log)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setLogToDelete(log);
+                          }}
                           className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
                           title="Delete log record"
                         >
@@ -441,6 +465,12 @@ export default function BillingDashboardPage() {
           )}
         </div>
       </div>
+
+      <LogDetailsModal
+        log={selectedLogForDetails}
+        isOpen={!!selectedLogForDetails}
+        onClose={() => setSelectedLogForDetails(null)}
+      />
 
       <ConfirmModal
         isOpen={!!logToDelete}

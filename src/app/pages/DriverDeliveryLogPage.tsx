@@ -40,6 +40,7 @@ import {
   Sparkles,
   Check,
   Trash2,
+  X,
 } from "lucide-react";
 
 export default function DriverDeliveryLogPage() {
@@ -454,13 +455,28 @@ export default function DriverDeliveryLogPage() {
             boxShadow: "0 2px 12px rgba(124,92,252,0.07)",
           }}
         >
-          <div>
-            <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
-              Route End Tracker
-            </p>
-            <p className="text-sm font-semibold text-foreground mt-0.5">
-              Arrival Time Back at Building
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest">
+                Route End Tracker
+              </p>
+              <p className="text-sm font-semibold text-foreground mt-0.5">
+                Arrival Time Back at Building
+              </p>
+            </div>
+            {arrivalTimeBack && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setArrivalTimeBack("");
+                }}
+                className="text-[10px] font-mono font-semibold text-muted-foreground hover:text-destructive transition-colors cursor-pointer flex items-center gap-0.5"
+                title="Clear arrival time"
+              >
+                <X size={10} /> Clear Time
+              </button>
+            )}
           </div>
 
           <div
@@ -479,15 +495,30 @@ export default function DriverDeliveryLogPage() {
                 if (typeof input.showPicker === "function") input.showPicker();
               }
             }}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-muted/40 transition-colors cursor-pointer"
+            className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-border bg-muted/40 transition-colors cursor-pointer"
           >
-            <Clock size={14} className="text-primary flex-shrink-0" />
-            <input
-              type="time"
-              value={arrivalTimeBack}
-              onChange={(e) => setArrivalTimeBack(e.target.value)}
-              className="flex-1 bg-transparent text-sm font-bold font-mono text-foreground focus:outline-none cursor-pointer [color-scheme:light]"
-            />
+            <div className="flex items-center gap-3 flex-1">
+              <Clock size={14} className="text-primary flex-shrink-0" />
+              <input
+                type="time"
+                value={arrivalTimeBack}
+                onChange={(e) => setArrivalTimeBack(e.target.value)}
+                className="flex-1 bg-transparent text-sm font-bold font-mono text-foreground focus:outline-none cursor-pointer [color-scheme:light]"
+              />
+            </div>
+            {arrivalTimeBack && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setArrivalTimeBack("");
+                }}
+                className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-white hover:bg-destructive rounded-full bg-muted/80 transition-all cursor-pointer flex-shrink-0"
+                title="Clear arrival time"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
         </div>
 

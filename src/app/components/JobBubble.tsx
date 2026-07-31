@@ -240,9 +240,29 @@ export function JobBubble({
 
         {/* Time Tracking */}
         <div className="flex flex-col gap-2">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-            Time Tracking
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+              Time Tracking
+            </span>
+            {job.editing && (job.startTime || job.stopTime || job.totalTime) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChange({
+                    startTime: "",
+                    stopTime: "",
+                    totalTime: "",
+                    status: "not-started",
+                  });
+                }}
+                className="text-[10px] font-mono font-semibold text-muted-foreground hover:text-destructive transition-colors cursor-pointer flex items-center gap-0.5"
+                title="Clear all times for this entry"
+              >
+                <X size={10} /> Clear Times
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-3 gap-2">
             {/* Start Time */}
             <div
@@ -271,11 +291,31 @@ export function JobBubble({
                 !job.editing ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
               }`}
             >
-              <div className="flex items-center gap-1">
-                <Clock size={10} className="text-muted-foreground" />
-                <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                  Start
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <Clock size={10} className="text-muted-foreground" />
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                    Start
+                  </span>
+                </div>
+                {job.editing && job.startTime && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const autoTotal = calcTotal("", job.stopTime);
+                      onChange({
+                        startTime: "",
+                        totalTime: autoTotal || "",
+                        status: job.stopTime ? "in-progress" : "not-started",
+                      });
+                    }}
+                    title="Clear start time"
+                    className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-white hover:bg-destructive rounded-full transition-all cursor-pointer bg-muted/80"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
               </div>
               <input
                 type="time"
@@ -327,11 +367,31 @@ export function JobBubble({
                 !job.editing ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
               }`}
             >
-              <div className="flex items-center gap-1">
-                <Clock size={10} className="text-muted-foreground" />
-                <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                  Stop
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <Clock size={10} className="text-muted-foreground" />
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                    Stop
+                  </span>
+                </div>
+                {job.editing && job.stopTime && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const autoTotal = calcTotal(job.startTime, "");
+                      onChange({
+                        stopTime: "",
+                        totalTime: autoTotal || "",
+                        status: job.startTime ? "in-progress" : "not-started",
+                      });
+                    }}
+                    title="Clear stop time"
+                    className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-white hover:bg-destructive rounded-full transition-all cursor-pointer bg-muted/80"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
               </div>
               <input
                 type="time"
@@ -367,16 +427,31 @@ export function JobBubble({
                   : "bg-muted/40 border-border"
               }`}
             >
-              <div className="flex items-center gap-1">
-                <Timer
-                  size={10}
-                  className={
-                    displayTotal ? "text-primary" : "text-muted-foreground"
-                  }
-                />
-                <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-                  Total
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1">
+                  <Timer
+                    size={10}
+                    className={
+                      displayTotal ? "text-primary" : "text-muted-foreground"
+                    }
+                  />
+                  <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                    Total
+                  </span>
+                </div>
+                {job.editing && displayTotal && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onChange({ totalTime: "" });
+                    }}
+                    title="Clear total time"
+                    className="w-5 h-5 flex items-center justify-center text-muted-foreground hover:text-white hover:bg-destructive rounded-full transition-all cursor-pointer bg-muted/80"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
               </div>
               <input
                 type="text"
