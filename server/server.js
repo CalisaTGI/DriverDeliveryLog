@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import ExcelJS from 'exceljs'; // 🟢 Upgraded to a live Excel spreadsheet compiler
 import { initDb } from './database.js';
+import { deleteLocation } from './locationStore.js';
 
 const app = express();
 const PORT = 5000;
@@ -45,6 +46,22 @@ app.post('/api/locations', async (req, res) => {
     res.status(201).json({ success: true, message: "Location saved permanently." });
   } catch (error) {
     res.status(500).json({ error: 'Failed to write custom location entry to disk.' });
+  }
+});
+
+// Remove a saved location from the dropdown list
+app.delete('/api/locations', async (req, res) => {
+  const { name } = req.body || {};
+
+  try {
+    const removed = await deleteLocation(db, name);
+    if (removed) {
+      res.json({ success: true, message: 'Location removed successfully.' });
+    } else {
+      res.status(404).json({ error: 'Location not found.' });
+    }
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Failed to remove location.' });
   }
 });
 
