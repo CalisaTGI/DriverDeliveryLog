@@ -9,19 +9,6 @@ import { saveCachedLogsIdb, getCachedLogsIdb } from "../../offline/db";
 import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { LogDetailsModal, DatabaseLog } from "../components/ui/LogDetailsModal";
 
-interface DatabaseLog {
-  id: number;
-  log_date: string;
-  driver_name: string;
-  job_number: string;
-  task_letter: string;
-  paperwork: number;
-  location: string;
-  start_time: string;
-  stop_time: string;
-  total_time: string;
-  arrival_back_time: string;
-}
 
 const ENABLE_DELETE_ROW_UI = false;
 
@@ -155,7 +142,7 @@ export default function BillingDashboardPage() {
     const headerRow = worksheet.addRow(headers);
     
     headerRow.font = { bold: true, color: { argb: 'FF000000' } };
-    headerRow.eachCell((cell) => {
+    headerRow.eachCell((cell: any) => {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
       cell.alignment = { vertical: 'middle', horizontal: 'center' };
     });
@@ -186,7 +173,7 @@ export default function BillingDashboardPage() {
     for (let i = 1; i <= 10; i++) {
       const column = worksheet.getColumn(i);
       let maxLength = 0;
-      column.eachCell?.({ includeEmpty: true }, (cell) => {
+      column.eachCell?.({ includeEmpty: true }, (cell: any) => {
         const columnLength = cell.value ? cell.value.toString().length : 10;
         if (columnLength > maxLength) {
           maxLength = columnLength;

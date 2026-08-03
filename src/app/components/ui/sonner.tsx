@@ -13,7 +13,6 @@ const Toaster = ({ ...props }: ToasterProps) => {
       className="toaster group cursor-pointer"
       richColors
       duration={2200}
-      dismissible
       closeButton
       style={
         {

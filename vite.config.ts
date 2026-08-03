@@ -107,6 +107,25 @@ export default defineConfig({
       },
     }),
   ],
+  optimizeDeps: {
+    esbuildOptions: {
+      plugins: [
+        {
+          name: 'strip-exceljs-sourcemap',
+          setup(build) {
+            build.onLoad({ filter: /exceljs/ }, async (args) => {
+              const fs = await import('fs');
+              const code = await fs.promises.readFile(args.path, 'utf8');
+              return {
+                contents: code.replace(/\/\/# sourceMappingURL=.*/g, ''),
+                loader: 'js',
+              };
+            });
+          },
+        },
+      ],
+    },
+  },
   resolve: {
     alias: {
       // Alias @ to the src directory
