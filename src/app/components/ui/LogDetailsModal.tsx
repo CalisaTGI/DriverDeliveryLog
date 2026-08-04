@@ -35,6 +35,7 @@ export interface DatabaseLog {
   stop_time: string;
   total_time: string;
   arrival_back_time: string;
+  signature?: string;
 }
 
 interface LogDetailsModalProps {
