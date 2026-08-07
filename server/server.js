@@ -1,20 +1,44 @@
 import express from 'express';
 import cors from 'cors';
-import ExcelJS from 'exceljs'; // 🟢 Upgraded to a live Excel spreadsheet compiler
+import ExcelJS from 'exceljs';
+import nodemailer from 'nodemailer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { initDb } from './database.js';
 import { deleteLocation } from './locationStore.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 5000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 let db;
 
-// Establish database engine instance connection and begin routing
-initDb().then((dbInstance) => {
+// Configure your Nodemailer email transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'your-actual-email@gmail.com',
+    pass: 'your-google-app-password'
+  }
+});
+
+initDb().then(async (dbInstance) => {
   db = dbInstance;
+  
+  // Ensure client_email column exists in delivery_requests table
+  try {
+    await db.run(`ALTER TABLE delivery_requests ADD COLUMN client_email TEXT;`);
+  } catch (e) {
+    // Column already exists, safe to ignore
+  }
+
   console.log('Successfully connected to the SQLite Database file.');
   app.listen(PORT, () => {
     console.log(`Backend service listening actively on http://localhost:${PORT}`);
@@ -25,7 +49,6 @@ initDb().then((dbInstance) => {
 
 /* ── BACKEND API ENDPOINTS ────────────────────────────────────────── */
 
-// Fetch all permanently saved location entries
 app.get('/api/locations', async (req, res) => {
   try {
     const rows = await db.all('SELECT name FROM locations ORDER BY name ASC');
@@ -35,7 +58,6 @@ app.get('/api/locations', async (req, res) => {
   }
 });
 
-// Save a brand-new custom location into the database for future dropdown loops
 app.post('/api/locations', async (req, res) => {
   const { name } = req.body;
   if (!name || name.trim() === "") {
@@ -49,10 +71,8 @@ app.post('/api/locations', async (req, res) => {
   }
 });
 
-// Remove a saved location from the dropdown list
 app.delete('/api/locations', async (req, res) => {
   const { name } = req.body || {};
-
   try {
     const removed = await deleteLocation(db, name);
     if (removed) {
@@ -65,7 +85,6 @@ app.delete('/api/locations', async (req, res) => {
   }
 });
 
-// Fetch the driver selection roster from the database
 app.get('/api/drivers', async (req, res) => {
   try {
     const rows = await db.all('SELECT name FROM drivers ORDER BY name ASC');
@@ -75,7 +94,6 @@ app.get('/api/drivers', async (req, res) => {
   }
 });
 
-// Save full log session array payload when driver finishes their day
 app.post('/api/submit-day', async (req, res) => {
   const { date, driver, jobs, arrivalBackTime, clientTxId } = req.body;
 
@@ -84,7 +102,6 @@ app.post('/api/submit-day', async (req, res) => {
   }
 
   try {
-    // Check for duplicate submission using clientTxId
     if (clientTxId) {
       const existing = await db.get('SELECT id FROM delivery_logs WHERE client_tx_id = ? LIMIT 1', [clientTxId]);
       if (existing) {
@@ -122,7 +139,250 @@ app.post('/api/submit-day', async (req, res) => {
   }
 });
 
-// Delete a specific delivery log by ID
+// Save a new delivery request along with client email and signature
+app.post('/api/delivery-requests', async (req, res) => {
+  const {
+    jobNumber, task, description, date,
+    deliverTo, workFor, instructions, details,
+    receivedByName, receiveDate, clientSignature, internalUse,
+    clientEmail: bodyClientEmail,
+    client_email: bodyClientEmailSnake
+  } = req.body;
+
+  const clientEmail = bodyClientEmail || bodyClientEmailSnake || '';
+
+  if (!jobNumber || !clientSignature) {
+    return res.status(400).json({ error: 'Job number and client signature are required.' });
+  }
+
+  try {
+    await db.run(
+      `INSERT INTO delivery_requests 
+      (job_number, task, description, date, deliver_to, work_for, instructions, details, received_by_name, receive_date, client_signature, internal_use, status, client_email) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        jobNumber,
+        task || '',
+        description || '',
+        date || '',
+        JSON.stringify(deliverTo || {}),
+        JSON.stringify(workFor || {}),
+        instructions || '',
+        details || '',
+        receivedByName || '',
+        receiveDate || '',
+        clientSignature,
+        JSON.stringify(internalUse || {}),
+        'completed',
+        clientEmail
+      ]
+    );
+
+    // Send confirmation email to the client with full form layout and signature
+    if (clientEmail && clientEmail.trim() !== '') {
+      const attachments = [];
+
+      // 1. Process Signature Image Attachment
+      let signatureImgHtml = '<span style="color:#777;">No signature</span>';
+      if (clientSignature && clientSignature.startsWith('data:image')) {
+        const matches = clientSignature.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          attachments.push({
+            filename: 'signature.png',
+            content: Buffer.from(matches[2], 'base64'),
+            cid: 'clientsig'
+          });
+          signatureImgHtml = `<img src="cid:clientsig" style="height: 50px; display: block;" alt="Client Signature"/>`;
+        }
+      }
+
+      // 2. Process Logo Attachment with expanded directory scanning
+      const possibleLogoPaths = [
+        path.join(__dirname, 'TGI-logo.png'),
+        path.join(__dirname, 'public', 'TGI-logo.png'),
+        path.join(__dirname, '../TGI-logo.png'),
+        path.join(__dirname, '../public', 'TGI-logo.png'),
+        path.join(process.cwd(), 'TGI-logo.png'),
+        path.join(process.cwd(), 'public', 'TGI-logo.png'),
+        path.join(process.cwd(), 'frontend', 'public', 'TGI-logo.png')
+      ];
+
+      let logoPath = null;
+      for (const p of possibleLogoPaths) {
+        if (fs.existsSync(p)) {
+          logoPath = p;
+          break;
+        }
+      }
+
+      let logoHtml = '<b style="font-size: 14px;">TGI DIRECT</b>';
+      if (logoPath) {
+        console.log('✅ TGI-logo.png successfully attached from:', logoPath);
+        attachments.push({
+          filename: 'TGI-logo.png',
+          path: logoPath,
+          cid: 'tgilogo'
+        });
+        logoHtml = '<img src="cid:tgilogo" style="height: 40px; display: block;" alt="TGI Direct Logo"/>';
+      } else {
+        console.warn('⚠️ TGI-logo.png could not be located. Checked paths:', possibleLogoPaths);
+      }
+
+      const mailOptions = {
+        from: '"TGI Direct Delivery Services" <christiankentremo@gmail.com>',
+        to: clientEmail.trim(),
+        subject: `Delivery Request & Sign-off Form - Job #${jobNumber}`,
+        attachments: attachments,
+        html: `
+          <div style="max-width: 650px; margin: 0 auto; font-family: Arial, sans-serif; color: #000; font-size: 12px; border: 1px solid #444; padding: 15px; background: #fff;">
+            
+            <!-- HEADER SECTION -->
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px;">
+              <tr>
+                <td style="vertical-align: top; width: 55%;">
+                  ${logoHtml}<br/>
+                  <span>Marketing Support Services</span><br/>
+                  <span style="font-size: 10px; color: #555;">P.O. Box, Flint, MI 48507-0354 | (800) 337-2237</span>
+                </td>
+                <td style="vertical-align: top; width: 45%; text-align: right;">
+                  <table align="right" style="border: 1px solid #000; text-align: center; width: 220px; border-collapse: collapse;">
+                    <tr>
+                      <td colspan="4" style="background: #e2e2e2; border-bottom: 1px solid #000; font-weight: bold; padding: 3px; font-size: 11px;">Delivery Request</td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #000; font-size: 10px;">
+                      <td style="border-right: 1px solid #000; padding: 2px; font-weight: bold;">Job</td>
+                      <td style="border-right: 1px solid #000; padding: 2px; font-weight: bold;">Task</td>
+                      <td style="border-right: 1px solid #000; padding: 2px; font-weight: bold;">Description</td>
+                      <td style="padding: 2px; font-weight: bold;">Date</td>
+                    </tr>
+                    <tr>
+                      <td style="border-right: 1px solid #000; padding: 4px;">${jobNumber || '—'}</td>
+                      <td style="border-right: 1px solid #000; padding: 4px;">${task || '—'}</td>
+                      <td style="border-right: 1px solid #000; padding: 4px;">${description || '—'}</td>
+                      <td style="padding: 4px;">${date || '—'}</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- DELIVER TO & WORK FOR BLOCKS -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 10px;">
+              <tr>
+                <td style="width: 48%; border: 1px solid #000; vertical-align: top; padding: 0;">
+                  <div style="background: #e2e2e2; border-bottom: 1px solid #000; font-weight: bold; padding: 4px 6px;">Deliver To:</div>
+                  <div style="padding: 6px; font-size: 11px; line-height: 1.4;">
+                    <b>${deliverTo?.name || ''}</b><br/>
+                    ${deliverTo?.company || ''}<br/>
+                    ${deliverTo?.address1 || ''}<br/>
+                    ${deliverTo?.address2 || ''}
+                  </div>
+                </td>
+                <td style="width: 4%;"></td>
+                <td style="width: 48%; border: 1px solid #000; vertical-align: top; padding: 0;">
+                  <div style="background: #e2e2e2; border-bottom: 1px solid #000; font-weight: bold; padding: 4px 6px;">Work For:</div>
+                  <div style="padding: 6px; font-size: 11px; line-height: 1.4;">
+                    <b>${workFor?.company || ''}</b><br/>
+                    ${workFor?.address1 || ''}<br/>
+                    ${workFor?.address2 || ''}
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <!-- INSTRUCTIONS -->
+            <div style="border: 1px solid #000; margin-bottom: 10px;">
+              <div style="background: #e2e2e2; border-bottom: 1px solid #000; font-weight: bold; padding: 4px 6px;">Instructions:</div>
+              <div style="padding: 6px; font-size: 11px;">${instructions || '—'}</div>
+            </div>
+
+            <!-- DETAILS -->
+            <div style="border: 1px solid #000; margin-bottom: 10px;">
+              <div style="background: #e2e2e2; border-bottom: 1px solid #000; font-weight: bold; padding: 4px 6px;">Details:</div>
+              <div style="padding: 6px; font-size: 11px; white-space: pre-line; min-height: 40px;">${details || '—'}</div>
+            </div>
+
+            <!-- RECEIVED BY & SIGNATURE -->
+            <div style="border: 1px solid #000; padding: 8px; margin-bottom: 10px;">
+              <table style="width: 100%; font-size: 11px; margin-bottom: 8px;">
+                <tr>
+                  <td><b>Received By:</b> ${receivedByName || '—'}</td>
+                  <td><b>Date:</b> ${receiveDate || date || '—'}</td>
+                </tr>
+                <tr>
+                  <td colspan="2" style="padding-top: 6px;"><b>Client Email:</b> ${clientEmail || '—'}</td>
+                </tr>
+              </table>
+              <div style="margin-top: 6px;">
+                <b>Client Signature:</b><br/>
+                <div style="border: 1px dashed #777; background: #fafafa; padding: 4px; display: inline-block; margin-top: 4px;">
+                  ${signatureImgHtml}
+                </div>
+              </div>
+            </div>
+
+            <!-- TGI INTERNAL USE -->
+            <div style="border: 1px solid #000; margin-bottom: 10px; font-size: 10px;">
+              <div style="background: #e2e2e2; border-bottom: 1px solid #000; font-weight: bold; padding: 4px 6px;">TGI Internal Use:</div>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; border-bottom: 1px solid #000;">
+                <tr>
+                  <td width="33%" style="border-right: 1px solid #000; padding: 4px; vertical-align: top;"><b>Driver:</b> ${internalUse?.driver || '—'}</td>
+                  <td width="34%" style="border-right: 1px solid #000; padding: 4px; vertical-align: top;"><b>Vehicle:</b> ${internalUse?.vehicle || '—'}</td>
+                  <td width="33%" style="padding: 4px; vertical-align: top;"><b>Zone:</b> ${internalUse?.zone || '—'}</td>
+                </tr>
+              </table>
+              <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse;">
+                <tr>
+                  <td width="25%" style="border-right: 1px solid #000; padding: 4px; vertical-align: top;"><b>Bill:</b> ${internalUse?.bill || '—'}</td>
+                  <td width="25%" style="border-right: 1px solid #000; padding: 4px; vertical-align: top;"><b>Hrs:</b> ${internalUse?.hrs || '—'}</td>
+                  <td width="25%" style="border-right: 1px solid #000; padding: 4px; vertical-align: top;"><b>Min:</b> ${internalUse?.min || '—'}</td>
+                  <td width="25%" style="padding: 4px; vertical-align: top;"><b>By:</b> ${internalUse?.by || '—'}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="text-align: center; color: #555; font-size: 10px; margin-top: 15px;">
+              This is an official automated copy of your signed delivery request form with TGI Direct.
+            </div>
+          </div>
+          
+        `
+      };
+
+      transporter.sendMail(mailOptions, (mailErr, info) => {
+        if (mailErr) {
+          console.error('Error sending confirmation email to client:', mailErr);
+        } else {
+          console.log('Confirmation email sent successfully:', info.response);
+        }
+      });
+    }
+
+    res.status(201).json({ success: true, message: 'Delivery request saved successfully with signature and email sent.' });
+  } catch (error) {
+    console.error('Database write error for delivery request:', error);
+    res.status(500).json({ error: 'Failed to save delivery request to database.' });
+  }
+});
+
+// Fetch all delivery requests
+app.get('/api/delivery-requests', async (req, res) => {
+  try {
+    const rows = await db.all('SELECT * FROM delivery_requests ORDER BY id DESC');
+    const formattedRows = rows.map(row => ({
+      ...row,
+      clientEmail: row.client_email || '',
+      deliverTo: JSON.parse(row.deliver_to || '{}'),
+      workFor: JSON.parse(row.work_for || '{}'),
+      internalUse: JSON.parse(row.internal_use || '{}')
+    }));
+    res.json(formattedRows);
+  } catch (error) {
+    console.error('Fetch delivery requests error:', error);
+    res.status(500).json({ error: 'Failed to extract delivery requests from database.' });
+  }
+});
+
 app.delete('/api/delivery-logs/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -138,7 +398,6 @@ app.delete('/api/delivery-logs/:id', async (req, res) => {
   }
 });
 
-// Delete all logs or clear database records
 app.delete('/api/delivery-logs', async (req, res) => {
   try {
     await db.run('DELETE FROM delivery_logs');
@@ -149,28 +408,20 @@ app.delete('/api/delivery-logs', async (req, res) => {
   }
 });
 
-
-// Admin dashboard data feed for the billing/admin page
-// Admin dashboard data feed (UPDATED for date filtering)
 app.get('/api/billing-export', async (req, res) => {
   try {
     if (!db) return res.status(503).json({ error: 'Database warming up.' });
-    
     const { start, end } = req.query;
     let query = `
       SELECT id, log_date, driver_name, job_number, task_letter, paperwork, location, start_time, stop_time, total_time, arrival_back_time, signature
       FROM delivery_logs 
     `;
     const params = [];
-
-    // Apply date filter if both start and end are provided
     if (start && end) {
       query += ` WHERE log_date BETWEEN ? AND ? `;
       params.push(start, end);
     }
-    
     query += ` ORDER BY log_date DESC, id DESC`;
-    
     const records = await db.all(query, params);
     res.status(200).json(records);
   } catch (err) {
@@ -178,32 +429,25 @@ app.get('/api/billing-export', async (req, res) => {
   }
 });
 
-// EXPORT GATEWAY (UPDATED for date filtering)
 app.get('/api/billing/export-csv', async (req, res) => {
   try {
     if (!db) return res.status(503).send('Database warming up.');
-
     const { start, end } = req.query;
     let query = `
       SELECT log_date, driver_name, job_number, task_letter, paperwork, location, start_time, stop_time, total_time, arrival_back_time 
       FROM delivery_logs 
     `;
     const params = [];
-
-    // Apply date filter for the Excel export
     if (start && end) {
       query += ` WHERE log_date BETWEEN ? AND ? `;
       params.push(start, end);
     }
-    
     query += ` ORDER BY log_date DESC, id ASC`;
-
     const records = await db.all(query, params);
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Delivery Logs');
 
-    // 1. Define columns (This initially places headers on Row 1)
     const columnDefinitions = [
       { header: 'Date', key: 'date' },
       { header: 'Driver', key: 'driver' },
@@ -222,36 +466,22 @@ app.get('/api/billing/export-csv', async (req, res) => {
       width: col.header.length + 3
     }));
 
-    // Insert Title Row at the top (This pushes the headers down to Row 2)
     worksheet.insertRow(1, ['Driver Delivery Time Logs']);
-    
-    // Merge cells A1 through J1 (Columns 1 to 10) to center the title across the whole table
-    // worksheet.mergeCells('A1:J1');
-    
-    // Style the new title cell
     const titleCell = worksheet.getCell('A1');
     titleCell.font = { size: 16, bold: true, color: { argb: 'FF333333' } };
-
     titleCell.alignment = { vertical: 'middle', horizontal: 'left' }; 
-
-    //worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'left' };
     worksheet.getRow(1).height = 30;
-    // Bold the table column headers (which are now on Row 2)
     worksheet.getRow(2).font = { bold: true };
 
     let totalMinutesSum = 0;
-
-    // 2. Add rows and check widths simultaneously 
-    records.forEach((r, index) => {
+    records.forEach((r) => {
       const paperworkStatus = r.paperwork === 1 ? 'YES' : '—';
       const taskClean = String(r.task_letter || '—').toUpperCase();
 
       if (r.total_time && r.total_time !== '—') {
         const match = r.total_time.match(/(\d+)h\s*(\d+)m/);
         if (match) {
-          const hours = parseInt(match[1], 10);
-          const minutes = parseInt(match[2], 10);
-          totalMinutesSum += (hours * 60) + minutes;
+          totalMinutesSum += (parseInt(match[1], 10) * 60) + parseInt(match[2], 10);
         }
       }
 
@@ -269,14 +499,11 @@ app.get('/api/billing/export-csv', async (req, res) => {
       };
 
       const newRow = worksheet.addRow(rowData);
-
-      // Width tracker
       if (newRow.number >= 3) {
         worksheet.columns.forEach(col => {
           const cellValue = rowData[col.key];
           const cellLength = cellValue ? cellValue.toString().length : 0;
-          const minimumWidth = col.width || 14;
-          if (cellLength + 4 > minimumWidth) {
+          if (cellLength + 4 > (col.width || 14)) {
               col.width = cellLength + 4;
           }
         });
@@ -287,7 +514,6 @@ app.get('/api/billing/export-csv', async (req, res) => {
     const calculatedMinutes = totalMinutesSum % 60;
     const finalTotalTimeStr = `${calculatedHours}h ${calculatedMinutes}m`;
 
-    // Append signature formatting summaries smoothly
     worksheet.addRow([]);
     const signatureRowData = {
       date: 'Driver Signature:',
@@ -295,21 +521,10 @@ app.get('/api/billing/export-csv', async (req, res) => {
       backTime: finalTotalTimeStr
     };
     worksheet.addRow(signatureRowData);
-
-    // Ensure signature text doesn't cut off
-    worksheet.columns.forEach(col => {
-      const cellValue = signatureRowData[col.key];
-      const cellLength = cellValue ? cellValue.toString().length : 0;
-      if (cellLength + 3 > col.width) {
-        col.width = cellLength + 3;
-      }
-    });
-
-    // Bold the final total calculations row
     worksheet.getRow(worksheet.rowCount).font = { bold: true };
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    const fileName = start && end ? `Delivery_Logs_${start}_to_${end}.xlsx` : `Driver_Delivery_Time_Log.xlsx`;
+    const fileName = start && end ? `Delivery_Logs_${start}_to_${endDate}.xlsx` : `Driver_Delivery_Time_Log.xlsx`;
     res.setHeader('Content-Disposition', `attachment; filename=${fileName}`); 
 
     await workbook.xlsx.write(res);
@@ -320,12 +535,11 @@ app.get('/api/billing/export-csv', async (req, res) => {
   }
 });
 
-
 function calcJobDuration(start, stop) {
   if (!start || !stop) return "—";
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = stop.split(":").map(Number);
   let mins = (eh * 60 + em) - (sh * 60 + sm);
-  if (mins < 0) mins += 24 * 60; // Overnight shift compensation rule
+  if (mins < 0) mins += 24 * 60;
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }

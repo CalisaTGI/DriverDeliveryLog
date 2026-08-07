@@ -47,7 +47,29 @@ export async function initDb() {
     )
   `);
 
-  // Migration helper: Add client_tx_id if schema was created earlier without it
+  // 4. Delivery Requests table (Updated with client_email)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS delivery_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_number TEXT NOT NULL,
+      task TEXT,
+      description TEXT,
+      date TEXT,
+      deliver_to TEXT,
+      work_for TEXT,
+      instructions TEXT,
+      details TEXT,
+      received_by_name TEXT,
+      receive_date TEXT,
+      client_signature TEXT NOT NULL,
+      internal_use TEXT,
+      status TEXT DEFAULT 'completed',
+      client_email TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Migration helper: Add client_tx_id to delivery_logs if missing
   try {
     const columns = await db.all(`PRAGMA table_info(delivery_logs)`);
     const hasTxId = columns.some((col) => col.name === 'client_tx_id');
@@ -56,6 +78,17 @@ export async function initDb() {
     }
   } catch (err) {
     console.error('Migration warning (client_tx_id):', err.message);
+  }
+
+  // Migration helper: Add client_email to delivery_requests if missing
+  try {
+    const columns = await db.all(`PRAGMA table_info(delivery_requests)`);
+    const hasEmail = columns.some((col) => col.name === 'client_email');
+    if (!hasEmail) {
+      await db.exec(`ALTER TABLE delivery_requests ADD COLUMN client_email TEXT`);
+    }
+  } catch (err) {
+    console.error('Migration warning (client_email):', err.message);
   }
 
   // Seed baseline personnel
