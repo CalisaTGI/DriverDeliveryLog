@@ -49,20 +49,36 @@ export default function DeliveryRequestForm() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
-  const [formData, setFormData] = useState<DeliveryFormState>({
-    job: '',
-    task: '',
-    description: '',
-    date: getTodayDate(), // Defaults to today, but fully changeable
-    deliverTo: { name: '', company: '', address1: '', address2: '' },
-    workFor: { company: '', address1: '', address2: '' },
-    instructions: '',
-    details: '',
-    receivedByName: '',
-    receiveDate: getTodayDate(), // Defaults to today, but fully changeable
-    clientSignature: '',
-    internalUse: { driver: '', vehicle: '', zone: '', bill: '', hrs: '', min: '', by: '' },
-    clientEmail: ''
+  const [formData, setFormData] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const passedDate = params.get('date');
+    const passedDriver = params.get('driver');
+    const passedHrs = params.get('hrs');
+    const passedMin = params.get('min');
+    
+    return {
+      job: params.get('job') || '',
+      task: params.get('task') || '',
+      description: '',
+      date: passedDate || getTodayDate(), // Grabs log date or defaults to today
+      deliverTo: { name: '', company: '', address1: '', address2: '' },
+      workFor: { company: '', address1: '', address2: '' },
+      instructions: '',
+      details: '',
+      receivedByName: '',
+      receiveDate: passedDate || getTodayDate(), // Grabs log date or defaults to today
+      clientSignature: '',
+      internalUse: { 
+        driver: passedDriver || '', // Prepopulates the driver field here!
+        vehicle: '', 
+        zone: '', 
+        bill: '', 
+        hrs: passedHrs || '',
+        min: passedMin || '',
+        by: '' 
+      },
+      clientEmail: ''
+    };
   });
 
   const handleChange = (
@@ -158,7 +174,29 @@ export default function DeliveryRequestForm() {
       if (!response.ok) throw new Error(result.error || 'Failed to save delivery request.');
 
       alert('Delivery request successfully saved!');
-      navigate(-1);
+      
+      setFormData({
+        job: '',
+        task: '',
+        description: '',
+        date: getTodayDate(),
+        deliverTo: { name: '', company: '', address1: '', address2: '' },
+        workFor: { company: '', address1: '', address2: '' },
+        instructions: '',
+        details: '',
+        receivedByName: '',
+        receiveDate: getTodayDate(),
+        clientSignature: '',
+        internalUse: { driver: '', vehicle: '', zone: '', bill: '', hrs: '', min: '', by: '' },
+        clientEmail: ''
+      });
+      
+      // Clear the signature canvas drawing
+      clearSignature();
+
+      // Redirect back to the driver delivery log
+      navigate('/');
+
     } catch (err: any) {
       console.error(err);
       alert(`Error: ${err.message}`);
@@ -170,121 +208,124 @@ export default function DeliveryRequestForm() {
       <form onSubmit={handleSubmit} className="space-y-4">
         
         {/* HEADER SECTION */}
-        <div className="flex flex-col sm:flex-row justify-between items-start gap-4 border-b-2 border-black pb-4">
-          <div>
-            <img src="/TGI-logo.png" alt="TGI Direct Logo" className="h-14 sm:h-16 object-contain mb-1" />
-            <div className="font-bold text-sm tracking-wide">Marketing Support Services</div>
-            <div className="text-[10px] text-gray-700 leading-tight">
+        <div className="flex flex-row justify-between items-start gap-2 border-b-2 border-black pb-3">
+          <div className="flex-shrink-0">
+            <img src="/TGI-logo.png" alt="TGI Direct Logo" className="h-10 sm:h-12 object-contain mb-1" />
+            <div className="font-bold text-[11px] sm:text-sm leading-tight">Marketing Support Services</div>
+            <div className="text-[8px] sm:text-[10px] text-gray-700 leading-tight">
               P.O. Box, Flint, MI 48507-0354<br />
               (800) 337-2237 Fax (810) 239-4321<br />
               www.tgidirect.com
             </div>
           </div>
 
-          <div className="border border-black w-full sm:w-80 text-center">
-            <div className="bg-gray-200 border-b border-black font-bold py-1 text-xs">Delivery Request</div>
-            <div className="grid grid-cols-4 divide-x divide-black border-b border-black text-[10px] sm:text-[11px]">
-              <div className="py-1 px-0.5 font-semibold">Job</div>
-              <div className="py-1 px-0.5 font-semibold">Task</div>
-              <div className="py-1 px-0.5 font-semibold">Description</div>
-              <div className="py-1 px-0.5 font-semibold">Date</div>
+          <div className="border border-black w-40 sm:w-60 text-center flex-shrink-0">
+            <div className="bg-gray-200 border-b border-black font-bold py-0.5 text-[9px] sm:text-xs">
+              Delivery Request
             </div>
-            <div className="grid grid-cols-4 divide-x divide-black h-8 items-center text-[10px] sm:text-[11px]">
-              <input 
-                type="text" 
-                name="job" 
-                value={formData.job} 
-                onChange={handleChange} 
-                placeholder="268337"
-                className="w-full text-center focus:outline-none bg-transparent px-0.5"
+            <div className="grid grid-cols-4 divide-x divide-black border-b border-black text-[7px] sm:text-[11px]">
+              <div className="py-0.5 px-0.5 font-semibold min-w-0">Job</div>
+              <div className="py-0.5 px-0.5 font-semibold min-w-0">Task</div>
+              <div className="py-0.5 px-0.5 font-semibold min-w-0">Desc.</div>
+              <div className="py-0.5 px-0.5 font-semibold min-w-0">Date</div>
+            </div>
+            <div className="grid grid-cols-4 divide-x divide-black min-h-[2rem] items-center text-[7px] sm:text-[11px]">
+              <input
+                type="text"
+                name="job"
+                value={formData.job}
+                onChange={handleChange}
+                placeholder="268347"
+                className="w-full min-w-0 text-center focus:outline-none bg-transparent px-0"
                 required
               />
-              <input 
-                type="text" 
-                name="task" 
-                value={formData.task} 
-                onChange={handleChange} 
-                placeholder="P"
-                className="w-full text-center focus:outline-none bg-transparent px-0.5"
+              <input
+                type="text"
+                name="task"
+                value={formData.task}
+                onChange={handleChange}
+                placeholder="A"
+                className="w-full min-w-0 text-center focus:outline-none bg-transparent px-0"
               />
-              <input 
-                type="text" 
-                name="description" 
-                value={formData.description} 
-                onChange={handleChange} 
+              <input
+                type="text"
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
                 placeholder="06.26"
-                className="w-full text-center focus:outline-none bg-transparent px-0.5"
+                className="w-full min-w-0 text-center focus:outline-none bg-transparent px-0"
               />
-              <input 
-                type="date" 
-                name="date" 
-                value={formData.date} 
-                onChange={handleChange} 
-                className="w-full text-[9px] sm:text-[10px] text-center focus:outline-none bg-transparent px-0.5"
+              <input
+                type="date"
+                name="date"
+                value={formData.date}
+                onChange={handleChange}
+                className="w-full min-w-0 text-center focus:outline-none bg-transparent px-0 text-[7px] sm:text-[10px] appearance-none [&::-webkit-calendar-picker-indicator]:hidden"
               />
             </div>
           </div>
         </div>
 
         {/* DELIVER TO & WORK FOR BOXES */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="border border-black">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="border border-black flex flex-col w-full md:w-1/2">
             <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Deliver To:</div>
-            <div className="p-2 space-y-1">
+            <div className="p-2 space-y-1 flex-1 flex flex-col justify-between">
               <input 
                 type="text" 
                 placeholder="Recipient Name (e.g. Gary Coulier)" 
                 value={formData.deliverTo.name} 
                 onChange={(e) => handleChange(e, 'deliverTo', 'name')}
-                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-0.5"
+                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-1 text-sm bg-transparent"
               />
               <input 
                 type="text" 
                 placeholder="Company Name" 
                 value={formData.deliverTo.company} 
                 onChange={(e) => handleChange(e, 'deliverTo', 'company')}
-                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-0.5"
+                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-1 text-sm bg-transparent"
               />
               <input 
                 type="text" 
                 placeholder="Address Line 1" 
                 value={formData.deliverTo.address1} 
                 onChange={(e) => handleChange(e, 'deliverTo', 'address1')}
-                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-0.5"
+                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-1 text-sm bg-transparent"
               />
               <input 
                 type="text" 
                 placeholder="City, State, Zip" 
                 value={formData.deliverTo.address2} 
                 onChange={(e) => handleChange(e, 'deliverTo', 'address2')}
-                className="w-full focus:outline-none p-0.5"
+                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-1 text-sm bg-transparent"
               />
             </div>
           </div>
 
-          <div className="border border-black">
+          <div className="border border-black flex flex-col w-full md:w-1/2">
             <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Work For:</div>
-            <div className="p-2 space-y-1">
+            <div className="p-2 space-y-1 flex-1 flex flex-col justify-between">
+              <div aria-hidden="true" className="p-1 text-sm invisible select-none">Spacer</div>
               <input 
                 type="text" 
                 placeholder="Company Name" 
                 value={formData.workFor.company} 
                 onChange={(e) => handleChange(e, 'workFor', 'company')}
-                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-0.5"
+                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-1 text-sm bg-transparent"
               />
               <input 
                 type="text" 
                 placeholder="Address Line 1" 
                 value={formData.workFor.address1} 
                 onChange={(e) => handleChange(e, 'workFor', 'address1')}
-                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-0.5"
+                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-1 text-sm bg-transparent"
               />
               <input 
                 type="text" 
                 placeholder="City, State, Zip" 
                 value={formData.workFor.address2} 
                 onChange={(e) => handleChange(e, 'workFor', 'address2')}
-                className="w-full focus:outline-none p-0.5"
+                className="w-full border-b border-dashed border-gray-400 focus:outline-none p-1 text-sm bg-transparent"
               />
             </div>
           </div>

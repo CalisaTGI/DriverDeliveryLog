@@ -54,7 +54,7 @@ export default function DriverDeliveryLogPage() {
   // Restore initial state from saved active shift draft if present
   const initialDraft = getShiftDraft();
 
-  const [date, setDate] = useState(initialDraft?.date || today);
+  const [date, setDate] = useState(today); // Forces today's date as default on load
   const [driver, setDriver] = useState(initialDraft?.driver || "Dion Lewis");
   const [jobs, setJobs] = useState<Job[]>(
     initialDraft?.jobs && initialDraft.jobs.length > 0
@@ -434,19 +434,45 @@ export default function DriverDeliveryLogPage() {
 
         {/* Job bubbles */}
         {jobs.map((job, i) => (
-          <JobBubble
-            key={job.id}
-            job={job}
-            index={i}
-            locationOptions={locationOptions}
-            onRefreshLocations={refreshLocations}
-            onOpenAddLocation={() => {
-              setTargetJobIdForNewLocation(job.id);
-              setIsAddLocationModalOpen(true);
-            }}
-            onChange={(patch) => updateJob(job.id, patch)}
-            onDelete={() => deleteJob(job.id)}
-          />
+          <div key={job.id} className="flex flex-col gap-2">
+            <JobBubble
+              job={job}
+              index={i}
+              locationOptions={locationOptions}
+              onRefreshLocations={refreshLocations}
+              onOpenAddLocation={() => {
+                setTargetJobIdForNewLocation(job.id);
+                setIsAddLocationModalOpen(true);
+              }}
+              onChange={(patch) => updateJob(job.id, patch)}
+              onDelete={() => deleteJob(job.id)}
+           />
+           {/* Button to open Delivery Request prepopulated */}
+           <div className="flex justify-end px-1 mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                let hrs = '';
+                let min = '';
+                if (job.startTime && job.stopTime) {
+                  const [startH, startM] = job.startTime.split(':').map(Number);
+                  const [stopH, stopM] = job.stopTime.split(':').map(Number);
+                  const startTotalMin = startH * 60 + startM;
+                  const stopTotalMin = stopH * 60 + stopM;
+                  const diffMin = Math.max(0, stopTotalMin - startTotalMin);
+                  hrs = Math.floor(diffMin / 60).toString();
+                  min = (diffMin % 60).toString();
+                }
+
+                window.location.href = `/delivery-request?job=${encodeURIComponent(job.jobNumber || '')}&task=${encodeURIComponent(job.task || '')}&date=${encodeURIComponent(date)}&driver=${encodeURIComponent(driver)}&hrs=${encodeURIComponent(hrs)}&min=${encodeURIComponent(min)}`;
+              }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary font-bold text-xs transition-all cursor-pointer shadow-sm"
+              >
+                <FileText size={12} />
+                Fill Delivery Request
+              </button>
+            </div>
+          </div>
         ))}
 
         {/* Add another job */}

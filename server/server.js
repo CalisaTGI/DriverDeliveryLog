@@ -24,8 +24,8 @@ let db;
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: 'your-actual-email@gmail.com',
-    pass: 'your-google-app-password'
+    user: 'christiankentremo@gmail.com',
+    pass: 'codhasarlgvexfrf'
   }
 });
 
@@ -192,7 +192,6 @@ app.post('/api/delivery-requests', async (req, res) => {
             content: Buffer.from(matches[2], 'base64'),
             cid: 'clientsig'
           });
-          signatureImgHtml = `<img src="cid:clientsig" style="height: 50px; display: block;" alt="Client Signature"/>`;
         }
       }
 
@@ -223,43 +222,51 @@ app.post('/api/delivery-requests', async (req, res) => {
           path: logoPath,
           cid: 'tgilogo'
         });
-        logoHtml = '<img src="cid:tgilogo" style="height: 40px; display: block;" alt="TGI Direct Logo"/>';
       } else {
         console.warn('⚠️ TGI-logo.png could not be located. Checked paths:', possibleLogoPaths);
       }
 
       const mailOptions = {
-        from: '"TGI Direct Delivery Services" <christiankentremo@gmail.com>',
-        to: clientEmail.trim(),
-        subject: `Delivery Request & Sign-off Form - Job #${jobNumber}`,
-        attachments: attachments,
+        from: process.env.EMAIL_USER,
+        to: clientEmail,
+        subject: `Delivery Request Confirmation - #${jobNumber}`,
+        attachments,
         html: `
           <div style="max-width: 650px; margin: 0 auto; font-family: Arial, sans-serif; color: #000; font-size: 12px; border: 1px solid #444; padding: 15px; background: #fff;">
+            <h2 style="color: #111;">TGI Direct - Delivery Request Confirmation</h2>
+            <p>Hi <strong>${receivedByName || 'Valued Client'}</strong>,</p>
+            <p>Thank you! Your signature has been successfully captured and recorded for delivery request job <strong>#${jobNumber}</strong>.</p>
+            <p>Here is your signed delivery request form copy:</p>
+            <div style="border: 1px solid #000; padding: 20px; background-color: #fff;">
             
             <!-- HEADER SECTION -->
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px;">
               <tr>
-                <td style="vertical-align: top; width: 55%;">
-                  ${logoHtml}<br/>
-                  <span>Marketing Support Services</span><br/>
-                  <span style="font-size: 10px; color: #555;">P.O. Box, Flint, MI 48507-0354 | (800) 337-2237</span>
+                <td style="vertical-align: top; width: 40%; padding-right: 6px;">
+                  <img src="cid:tgilogo" alt="TGI Direct" style="max-width:80px; height: auto; display: block; margin-bottom: 4px;" />
+                  <div style="font-weight: bold; font-size: 8px; line-height: 1.2; color: #000;">Marketing Support Services</div>
+                  <div style="font-size: 6px; color: #333; line-height: 1.2;">
+                    P.O. Box, Flint, MI 48507-0354<br />
+                    (800) 337-2237 Fax (810) 239-4321<br />
+                    www.tgidirect.com
+                  </div>
                 </td>
-                <td style="vertical-align: top; width: 45%; text-align: right;">
-                  <table align="right" style="border: 1px solid #000; text-align: center; width: 220px; border-collapse: collapse;">
+                <td style="vertical-align: middle; width: 60%; text-align: right;">
+                  <table width="100%" style="border: 1px solid #000; text-align: center; border-collapse: collapse;">
                     <tr>
-                      <td colspan="4" style="background: #e2e2e2; border-bottom: 1px solid #000; font-weight: bold; padding: 3px; font-size: 11px;">Delivery Request</td>
+                      <td colspan="4" style="background: #e2e2e2; border-bottom: 1px solid #000; font-weight: bold; padding: 2px; font-size: 10px;">Delivery Request</td>
                     </tr>
-                    <tr style="border-bottom: 1px solid #000; font-size: 10px;">
-                      <td style="border-right: 1px solid #000; padding: 2px; font-weight: bold;">Job</td>
-                      <td style="border-right: 1px solid #000; padding: 2px; font-weight: bold;">Task</td>
-                      <td style="border-right: 1px solid #000; padding: 2px; font-weight: bold;">Description</td>
-                      <td style="padding: 2px; font-weight: bold;">Date</td>
+                    <tr style="border-bottom: 1px solid #000; font-size: 8px;">
+                      <td style="border-right: 1px solid #000; padding: 2px; font-weight: bold; width: 22%;">Job</td>
+                      <td style="border-right: 1px solid #000; padding: 2px; font-weight: bold; width: 16%;">Task</td>
+                      <td style="border-right: 1px solid #000; padding: 2px; font-weight: bold; width: 30%;">Description</td>
+                     <td style="padding: 2px; font-weight: bold; width: 32%;">Date</td>
                     </tr>
                     <tr>
-                      <td style="border-right: 1px solid #000; padding: 4px;">${jobNumber || '—'}</td>
-                      <td style="border-right: 1px solid #000; padding: 4px;">${task || '—'}</td>
-                      <td style="border-right: 1px solid #000; padding: 4px;">${description || '—'}</td>
-                      <td style="padding: 4px;">${date || '—'}</td>
+                      <td style="border-right: 1px solid #000; padding: 2px; font-size: 9px;">${jobNumber || '—'}</td>
+                      <td style="border-right: 1px solid #000; padding: 2px; font-size: 9px;">${task || '—'}</td>
+                      <td style="border-right: 1px solid #000; padding: 2px; font-size: 9px;">${description || '—'}</td>
+                      <td style="padding: 2px; font-size: 9px; white-space: nowrap;">${date || '—'}</td>
                     </tr>
                   </table>
                 </td>
@@ -316,7 +323,7 @@ app.post('/api/delivery-requests', async (req, res) => {
               <div style="margin-top: 6px;">
                 <b>Client Signature:</b><br/>
                 <div style="border: 1px dashed #777; background: #fafafa; padding: 4px; display: inline-block; margin-top: 4px;">
-                  ${signatureImgHtml}
+                  <img src="cid:clientsig" alt="Client Signature" style="max-height: 50px; display: block; margin: 0 auto;" />
                 </div>
               </div>
             </div>
@@ -346,6 +353,12 @@ app.post('/api/delivery-requests', async (req, res) => {
             </div>
           </div>
           
+          <p style="margin-top: 20px;">If you have any questions, please feel free to reach out to our team.</p>
+            <p style="margin-top: 20px;">
+            Best regards,<br><br>
+            <strong>TGI Direct Operations Team</strong>
+          </p>
+        </div>
         `
       };
 
