@@ -235,23 +235,24 @@ app.post('/api/delivery-requests', async (req, res) => {
           <div style="max-width: 650px; margin: 0 auto; font-family: Arial, sans-serif; color: #000; font-size: 12px; border: 1px solid #444; padding: 15px; background: #fff;">
             <h2 style="color: #111;">TGI Direct - Delivery Request Confirmation</h2>
             <p>Hi <strong>${receivedByName || 'Valued Client'}</strong>,</p>
-            <p>Thank you! Your signature has been successfully captured and recorded for delivery request job <strong>#${jobNumber}</strong>.</p>
+            <p>Thank you! Your signature has been successfully saved and recorded for delivery request job <strong>#${jobNumber}</strong>.</p>
             <p>Here is your signed delivery request form copy:</p>
             <div style="border: 1px solid #000; padding: 20px; background-color: #fff;">
             
             <!-- HEADER SECTION -->
             <table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px;">
               <tr>
-                <td style="vertical-align: top; width: 40%; padding-right: 6px;">
+                <td style="vertical-align: top; width: 43%; padding-right: 4px;">
                   <img src="cid:tgilogo" alt="TGI Direct" style="max-width:80px; height: auto; display: block; margin-bottom: 4px;" />
                   <div style="font-weight: bold; font-size: 8px; line-height: 1.2; color: #000;">Marketing Support Services</div>
                   <div style="font-size: 6px; color: #333; line-height: 1.2;">
                     P.O. Box, Flint, MI 48507-0354<br />
-                    (800) 337-2237 Fax (810) 239-4321<br />
+                    (800) 337-2237<br />
+                    Fax (810) 239-4321<br />
                     www.tgidirect.com
                   </div>
                 </td>
-                <td style="vertical-align: middle; width: 60%; text-align: right;">
+                <td style="vertical-align: middle; width: 40%; text-align: right; padding: 0;">
                   <table width="100%" style="border: 1px solid #000; text-align: center; border-collapse: collapse;">
                     <tr>
                       <td colspan="4" style="background: #e2e2e2; border-bottom: 1px solid #000; font-weight: bold; padding: 2px; font-size: 10px;">Delivery Request</td>
@@ -426,18 +427,22 @@ app.get('/api/billing-export', async (req, res) => {
     if (!db) return res.status(503).json({ error: 'Database warming up.' });
     const { start, end } = req.query;
     let query = `
-      SELECT id, log_date, driver_name, job_number, task_letter, paperwork, location, start_time, stop_time, total_time, arrival_back_time, signature
-      FROM delivery_logs 
+      SELECT l.id, l.log_date, l.driver_name, l.job_number, l.task_letter, l.paperwork, l.location, 
+             l.start_time, l.stop_time, l.total_time, l.arrival_back_time, l.signature,
+             r.client_signature, r.received_by_name, r.client_email, r.instructions, r.details
+      FROM delivery_logs l
+      LEFT JOIN delivery_requests r ON l.job_number = r.job_number
     `;
     const params = [];
     if (start && end) {
-      query += ` WHERE log_date BETWEEN ? AND ? `;
+      query += ` WHERE l.log_date BETWEEN ? AND ? `;
       params.push(start, end);
     }
-    query += ` ORDER BY log_date DESC, id DESC`;
+    query += ` ORDER BY l.log_date DESC, l.id DESC`;
     const records = await db.all(query, params);
     res.status(200).json(records);
   } catch (err) {
+    console.error("Billing export error:", err);
     res.status(500).json({ error: 'Administrative read broken.' });
   }
 });
@@ -447,15 +452,18 @@ app.get('/api/billing/export-csv', async (req, res) => {
     if (!db) return res.status(503).send('Database warming up.');
     const { start, end } = req.query;
     let query = `
-      SELECT log_date, driver_name, job_number, task_letter, paperwork, location, start_time, stop_time, total_time, arrival_back_time 
-      FROM delivery_logs 
+      SELECT l.id, l.log_date, l.driver_name, l.job_number, l.task_letter, l.paperwork, l.location, 
+            l.start_time, l.stop_time, l.total_time, l.arrival_back_time, l.signature,
+            r.client_signature, r.received_by_name, r.client_email, r.instructions, r.details
+      FROM delivery_logs l
+      LEFT JOIN delivery_requests r ON l.job_number = r.job_number
     `;
     const params = [];
     if (start && end) {
-      query += ` WHERE log_date BETWEEN ? AND ? `;
+      query += ` WHERE l.log_date BETWEEN ? AND ? `;
       params.push(start, end);
     }
-    query += ` ORDER BY log_date DESC, id ASC`;
+    query += ` ORDER BY l.log_date DESC, l.id ASC`;
     const records = await db.all(query, params);
 
     const workbook = new ExcelJS.Workbook();

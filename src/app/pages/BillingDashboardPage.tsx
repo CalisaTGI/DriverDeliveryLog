@@ -23,6 +23,7 @@ export default function BillingDashboardPage() {
   // Delivery Requests state
   const [deliveryRequests, setDeliveryRequests] = useState<any[]>([]);
   const [loadingRequests, setLoadingRequests] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<any | null>(null);
 
   // Initialize dates: Default to the last 7 days
   const [startDate, setStartDate] = useState(() => {
@@ -114,6 +115,15 @@ export default function BillingDashboardPage() {
       });
   }, []);
 
+  // Auto-select the first request when the tab opens or filters change
+  useEffect(() => {
+    if (activeTab === "requests" && filteredRequests.length > 0) {
+      if (!selectedRequest || !filteredRequests.find(r => r.id === selectedRequest.id)) {
+        setSelectedRequest(filteredRequests[0]);
+      }
+    }
+  }, [activeTab, deliveryRequests, selectedRequest]); // Note: Using deliveryRequests in dependency as filteredRequests isn't hoisted yet
+
   const isIncompleteLog = (log: DatabaseLog) => {
     const hasJobNumber = !!log.job_number?.trim();
     const hasCompleteTime = !!log.start_time?.trim() && !!log.stop_time?.trim() && !!log.total_time?.trim();
@@ -177,7 +187,7 @@ export default function BillingDashboardPage() {
     const worksheet = workbook.addWorksheet('Delivery Logs');
 
     const titleRow = worksheet.addRow(['Driver Delivery Time Log']);
-    worksheet.mergeCells('A1:J1');
+    worksheet.mergeCells('A1:K1');
     
     const titleCell = worksheet.getCell('A1');
     titleCell.font = { size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
@@ -229,7 +239,7 @@ export default function BillingDashboardPage() {
     });
 
     worksheet.addRow([]);
-    const footerRow = worksheet.addRow(["", "Driver Signature:", "", "", "", "", "", "", "Total Drive Time:", totalDriveTime]);
+    const footerRow = worksheet.addRow(["", selectedDriver !== "All Drivers" ? "Driver Signature:" : "", "", "", "", "", "", "", "Total Drive Time:", totalDriveTime]);
     footerRow.font = { bold: true };
     worksheet.getCell(`I${footerRow.number}`).alignment = { horizontal: 'right' };
 
@@ -262,7 +272,7 @@ export default function BillingDashboardPage() {
 
   const exportToPdf = () => {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-    const title = "Driver Delivery Time Log";
+    const title = "Driver Delivery Time Logs";
     doc.setFontSize(14);
     doc.text(title, 40, 40);
 
@@ -291,6 +301,7 @@ export default function BillingDashboardPage() {
       head: headers,
       body: data,
       startY: 60,
+      margin: { left: 20, right: 20 },
       theme: "grid",
       headStyles: { fillColor: [124, 92, 252], textColor: 255, fontStyle: "bold" },
       styles: { fontSize: 8, cellPadding: 6, valign: "middle" as const, halign: "left" as const, overflow: "linebreak", cellWidth: "wrap" },
@@ -328,16 +339,18 @@ export default function BillingDashboardPage() {
 
     const finalY = (doc as any).lastAutoTable?.finalY || 60;
     const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 40;
+    const margin = 20;
     const labelY = finalY + 40;
 
     doc.setFontSize(10);
-    const signatureLabel = "Driver Signature:";
-    const signatureLabelWidth = doc.getTextWidth(signatureLabel);
-    const signatureLineStart = margin + signatureLabelWidth + 10;
-    const signatureLineEnd = Math.min(pageWidth - margin - 200, signatureLineStart + 100);
-    doc.text(signatureLabel, margin, labelY);
-    doc.line(signatureLineStart, labelY + 3, signatureLineEnd, labelY + 3);
+    if (selectedDriver !== "All Drivers") {
+      const signatureLabel = "Driver Signature:";
+      const signatureLabelWidth = doc.getTextWidth(signatureLabel);
+      const signatureLineStart = margin + signatureLabelWidth + 10;
+      const signatureLineEnd = Math.min(pageWidth - margin - 200, signatureLineStart + 100);
+      doc.text(signatureLabel, margin, labelY);
+      doc.line(signatureLineStart, labelY + 3, signatureLineEnd, labelY + 3);
+    }
 
     const totalDriveMinutes = filteredLogs.reduce((sum, log) => {
       const match = log.total_time ? log.total_time.match(/(\d+)h\s*(\d+)m/) : null;
@@ -399,7 +412,7 @@ export default function BillingDashboardPage() {
       // Outer border box matching form container cleanly within A4 height
       doc.setLineWidth(0.8);
       doc.setDrawColor(80, 80, 80);
-      doc.rect(margin, y, 525, 760);
+      doc.rect(margin, y, 525, 580);
 
       // --- HEADER SECTION ---
       y += 12;
@@ -590,15 +603,15 @@ export default function BillingDashboardPage() {
       // Page Number Footer (Nicely padded inside bottom border)
       doc.setFontSize(7.5);
       doc.setFont("helvetica", "italic");
-      doc.text("Page 1 of 1", margin + 500, 788, { align: "right" });
+      doc.text(`Page ${idx + 1} of ${filteredRequests.length}`, margin + 500, y + 72, { align: "right" });
     });
 
     doc.save(`Delivery_Requests_${startDate}_to_${endDate}.pdf`);
   };
 
   return (
-    <div className="w-full min-h-screen bg-slate-50 text-slate-900 p-6" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-      <div className="max-w-7xl mx-auto flex flex-col gap-6">
+    <div className="w-full min-h-screen bg-slate-50 text-slate-900 p-6 flex flex-col items-center" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+      <div className="max-w-6xl mx-auto w-full flex flex-col gap-6">
         
         {/* HEADER & TAB NAVIGATION */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-200 pb-5">
@@ -659,7 +672,7 @@ export default function BillingDashboardPage() {
                 onClick={exportRequestsToPdf}
                 className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold shadow-sm transition-all"
               >
-                <Download size={15} /> Export Requests to PDF
+                <Download size={15} /> Export to PDF
               </button>
             )}
           </div>
@@ -718,7 +731,8 @@ export default function BillingDashboardPage() {
 
         {/* TAB CONTENT: DRIVER LOGS TABLE */}
         {activeTab === "logs" && (
-          <div className="bg-white border border-slate-300 rounded-xl shadow-md overflow-x-auto">
+          <div className="bg-white border border-slate-300 rounded-xl shadow-md overflow-x-auto w-full flex justify-center">
+            <div className="w-full max-w-6xl">
             {loading ? (
               <div className="flex items-center justify-center py-20 gap-2 text-slate-500 text-sm font-semibold">
                 <Loader size={16} className="animate-spin text-primary" /> Loading active data rows...
@@ -728,7 +742,7 @@ export default function BillingDashboardPage() {
                 No registered delivery logs found matching the filter parameters.
               </div>
             ) : (
-              <table className="w-full text-left border-collapse min-w-[1000px]">
+              <table className="mx-auto w-full text-left border-collapse min-w-[1000px]">
                 <thead>
                   <tr className="bg-slate-100 border-b border-slate-400">
                     <th className="px-3 py-3 text-xs font-bold uppercase text-slate-700 text-center w-24 border-r border-slate-300">Details</th>
@@ -793,163 +807,212 @@ export default function BillingDashboardPage() {
               </table>
             )}
           </div>
+        </div>
         )}
 
-        {/* TAB CONTENT: DELIVERY REQUESTS & SIGN-OFFS */}
+        {/* TAB CONTENT: DELIVERY REQUESTS & SIGN-OFFS (SPLIT SCREEN LAYOUT) */}
         {activeTab === "requests" && (
-          <div className="space-y-6">
-            {loadingRequests ? (
-              <div className="flex items-center justify-center py-20 gap-2 text-slate-500 text-sm font-semibold">
-                <Loader size={16} className="animate-spin text-primary" /> Loading delivery requests...
-              </div>
-            ) : filteredRequests.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 text-slate-400 text-sm font-medium italic">
-                No signed delivery requests matching the filter parameters.
-              </div>
-            ) : (
-              filteredRequests.map((req) => {
-                const deliverTo = typeof req.deliverTo === 'string' ? JSON.parse(req.deliverTo || '{}') : (req.deliverTo || {});
-                const workFor = typeof req.workFor === 'string' ? JSON.parse(req.workFor || '{}') : (req.workFor || {});
-                const internalUse = typeof req.internal_use === 'string' ? JSON.parse(req.internal_use || '{}') : (req.internalUse || req.internal_use || {});
-
-                return (
-                  <div key={req.id} className="max-w-3xl mx-auto p-4 sm:p-6 bg-white border border-gray-400 shadow-sm my-6 font-sans text-xs text-black">
-                    
-                    {/* HEADER SECTION: Logo & Delivery Request Table */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4 border-b-2 border-black pb-4">
+          <div className="flex flex-col lg:flex-row gap-6 items-start w-full h-[calc(100vh-280px)] min-h-[600px]">
+            
+            {/* LEFT PANE: Master List */}
+            <div className="w-full lg:w-1/3 h-full flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar pb-10">
+              {loadingRequests ? (
+                <div className="flex items-center justify-center py-20 gap-2 text-slate-500 text-sm font-semibold">
+                  <Loader size={16} className="animate-spin text-primary" /> Loading requests...
+                </div>
+              ) : filteredRequests.length === 0 ? (
+                <div className="text-center py-20 bg-white rounded-2xl border border-slate-200 text-slate-400 text-sm font-medium italic">
+                  No delivery requests found.
+                </div>
+              ) : (
+                filteredRequests.map((req) => {
+                  const deliverTo = typeof req.deliverTo === 'string' ? JSON.parse(req.deliverTo || '{}') : (req.deliverTo || {});
+                  const isSelected = selectedRequest?.id === req.id;
+                  return (
+                    <button
+                      key={req.id}
+                      onClick={() => setSelectedRequest(req)}
+                      className={`text-left p-4 rounded-2xl border transition-all flex flex-col gap-1.5 ${
+                        isSelected 
+                          ? 'bg-primary/10 border-primary/50 shadow-sm ring-1 ring-primary/20' 
+                          : 'bg-white border-slate-200 hover:border-primary/30 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start w-full">
+                        <span className="font-extrabold text-sm text-slate-900">Job #{req.job_number || "—"}</span>
+                        <span className="text-[10px] font-bold font-mono text-slate-500">{req.date ? formatDisplayDate(req.date) : "—"}</span>
+                      </div>
+                      <div className="text-xs text-slate-600 font-medium truncate w-full">
+                        {deliverTo.name || deliverTo.company || "Unknown Client"}
+                      </div>
                       <div>
-                        <img src="/TGI-logo.png" alt="TGI Direct Logo" className="h-14 sm:h-16 object-contain mb-1" />
-                        <div className="font-bold text-sm tracking-wide">Marketing Support Services</div>
-                        <div className="text-[10px] text-gray-700 leading-tight">
-                          P.O. Box, Flint, MI 48507-0354<br />
-                          (800) 337-2237 Fax (810) 239-4321<br />
-                          www.tgidirect.com
+                        {req.client_signature ? (
+                          <span className="inline-flex mt-1 items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-200">
+                            Signed
+                          </span>
+                        ) : (
+                          <span className="inline-flex mt-1 items-center gap-1 text-[9px] font-extrabold uppercase tracking-wider text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md border border-amber-200">
+                            Pending Signature
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            {/* RIGHT PANE: Detail View (The A4 Form) */}
+            <div className="w-full lg:w-2/3 h-full bg-slate-300/40 rounded-3xl p-4 sm:p-8 flex justify-center overflow-y-auto custom-scrollbar border border-slate-200 shadow-inner relative">
+              {selectedRequest ? (
+                (() => {
+                  const req = selectedRequest;
+                  const deliverTo = typeof req.deliverTo === 'string' ? JSON.parse(req.deliverTo || '{}') : (req.deliverTo || {});
+                  const workFor = typeof req.workFor === 'string' ? JSON.parse(req.workFor || '{}') : (req.workFor || {});
+                  const internalUse = typeof req.internal_use === 'string' ? JSON.parse(req.internal_use || '{}') : (req.internalUse || req.internal_use || {});
+
+                  return (
+                    <div className="max-w-3xl w-full h-fit p-6 sm:p-10 bg-white border border-slate-300 shadow-xl font-sans text-xs text-black">
+                      
+                      {/* HEADER SECTION: Logo & Delivery Request Table */}
+                      <div className="flex flex-col sm:flex-row justify-between items-start gap-4 border-b-2 border-black pb-4">
+                        <div>
+                          <img src="/TGI-logo.png" alt="TGI Direct Logo" className="h-14 sm:h-16 object-contain mb-1" />
+                          <div className="font-bold text-sm tracking-wide">Marketing Support Services</div>
+                          <div className="text-[10px] text-gray-700 leading-tight">
+                            P.O. Box, Flint, MI 48507-0354<br />
+                            (800) 337-2237 Fax (810) 239-4321<br />
+                            www.tgidirect.com
+                          </div>
+                        </div>
+
+                        <div className="border border-black w-full sm:w-80 text-center">
+                          <div className="bg-gray-200 border-b border-black font-bold py-1 text-xs">Delivery Request</div>
+                          <div className="grid grid-cols-4 divide-x divide-black border-b border-black text-[10px] sm:text-[11px]">
+                            <div className="py-1 px-0.5 font-semibold">Job</div>
+                            <div className="py-1 px-0.5 font-semibold">Task</div>
+                            <div className="py-1 px-0.5 font-semibold">Description</div>
+                            <div className="py-1 px-0.5 font-semibold">Date</div>
+                          </div>
+                          <div className="grid grid-cols-4 divide-x divide-black h-8 items-center text-[10px] sm:text-[11px]">
+                            <div className="py-1 px-0.5 font-medium truncate">{req.job_number || "—"}</div>
+                            <div className="py-1 px-0.5 font-medium truncate">{req.task || "—"}</div>
+                            <div className="py-1 px-0.5 font-medium truncate">{req.description || "—"}</div>
+                            <div className="py-1 px-0.5 font-medium truncate">{req.date ? formatDisplayDate(req.date) : "—"}</div>
+                          </div>
                         </div>
                       </div>
 
-                      <div className="border border-black w-full sm:w-80 text-center">
-                        <div className="bg-gray-200 border-b border-black font-bold py-1 text-xs">Delivery Request</div>
-                        <div className="grid grid-cols-4 divide-x divide-black border-b border-black text-[10px] sm:text-[11px]">
-                          <div className="py-1 px-0.5 font-semibold">Job</div>
-                          <div className="py-1 px-0.5 font-semibold">Task</div>
-                          <div className="py-1 px-0.5 font-semibold">Description</div>
-                          <div className="py-1 px-0.5 font-semibold">Date</div>
+                      {/* DELIVER TO & WORK FOR BOXES */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div className="border border-black">
+                          <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Deliver To:</div>
+                          <div className="p-2 space-y-1">
+                            <div className="border-b border-dashed border-gray-400 p-0.5">{deliverTo.name || "—"}</div>
+                            <div className="border-b border-dashed border-gray-400 p-0.5">{deliverTo.company || "—"}</div>
+                            <div className="border-b border-dashed border-gray-400 p-0.5">{deliverTo.address1 || "—"}</div>
+                            <div className="p-0.5">{deliverTo.address2 || ""}</div>
+                          </div>
                         </div>
-                        <div className="grid grid-cols-4 divide-x divide-black h-8 items-center text-[10px] sm:text-[11px]">
-                          <div className="py-1 px-0.5 font-medium truncate">{req.job_number || "—"}</div>
-                          <div className="py-1 px-0.5 font-medium truncate">{req.task || "—"}</div>
-                          <div className="py-1 px-0.5 font-medium truncate">{req.description || "—"}</div>
-                          <div className="py-1 px-0.5 font-medium truncate">{req.date ? formatDisplayDate(req.date) : "—"}</div>
+
+                        <div className="border border-black">
+                          <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Work For:</div>
+                          <div className="p-2 space-y-1">
+                            <div className="border-b border-dashed border-gray-400 p-0.5">{workFor.company || "—"}</div>
+                            <div className="border-b border-dashed border-gray-400 p-0.5">{workFor.address1 || "—"}</div>
+                            <div className="p-0.5">{workFor.address2 || ""}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* INSTRUCTIONS */}
+                      <div className="border border-black mt-4">
+                        <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Instructions:</div>
+                        <div className="p-2 font-medium">{req.instructions || "—"}</div>
+                      </div>
+
+                      {/* DETAILS SECTION */}
+                      <div className="border border-black mt-4">
+                        <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Details:</div>
+                        <div className="p-2 min-h-[120px] whitespace-pre-line">{req.details || "—"}</div>
+                      </div>
+
+                      {/* RECEIVED BY & SIGNATURE */}
+                      <div className="border border-black p-3 space-y-3 mt-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                          <div className="flex items-center gap-2 w-full sm:w-1/2">
+                            <span className="font-bold whitespace-nowrap">Received By:</span>
+                            <span className="border-b border-black flex-1 px-1">{req.received_by_name || "—"}</span>
+                          </div>
+                          <div className="flex items-center gap-2 w-full sm:w-1/3">
+                            <span className="font-bold whitespace-nowrap">Date:</span>
+                            <span className="border-b border-black flex-1 px-1">{req.receive_date ? formatDisplayDate(req.receive_date) : "—"}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 w-full">
+                          <span className="font-bold whitespace-nowrap">Client Email:</span>
+                          <span className="border-b border-black flex-1 px-1">{req.clientEmail || req.client_email || "—"}</span>
+                        </div>
+
+                        <div className="pt-2">
+                          <div className="font-bold mb-1">Client Signature:</div>
+                          <div className="border border-dashed border-gray-500 bg-gray-50 p-1 inline-block w-full sm:w-auto">
+                            {req.client_signature ? (
+                              <img src={req.client_signature} alt="Client Signature" className="h-16 w-full sm:w-64 object-contain bg-white border border-gray-300" />
+                            ) : (
+                              <span className="text-gray-400 italic">No signature provided</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* TGI INTERNAL USE */}
+                      <div className="border border-black mt-4">
+                        <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">TGI Internal Use:</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 border-b border-black divide-y sm:divide-y-0 sm:divide-x divide-black text-[11px]">
+                          <div className="p-1 flex items-center gap-1">
+                            <span className="font-semibold">Driver:</span>
+                            <span>{internalUse.driver || "—"}</span>
+                          </div>
+                          <div className="p-1 flex items-center gap-1">
+                            <span className="font-semibold">Vehicle:</span>
+                            <span>{internalUse.vehicle || "—"}</span>
+                          </div>
+                          <div className="p-1 flex items-center gap-1">
+                            <span className="font-semibold">Zone:</span>
+                            <span>{internalUse.zone || "—"}</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 divide-x divide-black text-[11px]">
+                          <div className="p-1 flex items-center gap-1">
+                            <span className="font-semibold">Bill:</span>
+                            <span>{internalUse.bill || "—"}</span>
+                          </div>
+                          <div className="p-1 flex items-center gap-1">
+                            <span className="font-semibold">Hrs:</span>
+                            <span>{internalUse.hrs || "—"}</span>
+                          </div>
+                          <div className="p-1 flex items-center gap-1">
+                            <span className="font-semibold">Min:</span>
+                            <span>{internalUse.min || "—"}</span>
+                          </div>
+                          <div className="p-1 flex items-center gap-1">
+                            <span className="font-semibold">By:</span>
+                            <span>{internalUse.by || "—"}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-
-                    {/* DELIVER TO & WORK FOR BOXES */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                      <div className="border border-black">
-                        <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Deliver To:</div>
-                        <div className="p-2 space-y-1">
-                          <div className="border-b border-dashed border-gray-400 p-0.5">{deliverTo.name || "—"}</div>
-                          <div className="border-b border-dashed border-gray-400 p-0.5">{deliverTo.company || "—"}</div>
-                          <div className="border-b border-dashed border-gray-400 p-0.5">{deliverTo.address1 || "—"}</div>
-                          <div className="p-0.5">{deliverTo.address2 || ""}</div>
-                        </div>
-                      </div>
-
-                      <div className="border border-black">
-                        <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Work For:</div>
-                        <div className="p-2 space-y-1">
-                          <div className="border-b border-dashed border-gray-400 p-0.5">{workFor.company || "—"}</div>
-                          <div className="border-b border-dashed border-gray-400 p-0.5">{workFor.address1 || "—"}</div>
-                          <div className="p-0.5">{workFor.address2 || ""}</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* INSTRUCTIONS */}
-                    <div className="border border-black mt-4">
-                      <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Instructions:</div>
-                      <div className="p-2 font-medium">{req.instructions || "—"}</div>
-                    </div>
-
-                    {/* DETAILS SECTION */}
-                    <div className="border border-black mt-4">
-                      <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Details:</div>
-                      <div className="p-2 min-h-[120px] whitespace-pre-line">{req.details || "—"}</div>
-                    </div>
-
-                    {/* RECEIVED BY & SIGNATURE */}
-                    <div className="border border-black p-3 space-y-3 mt-4">
-                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                        <div className="flex items-center gap-2 w-full sm:w-1/2">
-                          <span className="font-bold whitespace-nowrap">Received By:</span>
-                          <span className="border-b border-black flex-1 px-1">{req.received_by_name || "—"}</span>
-                        </div>
-                        <div className="flex items-center gap-2 w-full sm:w-1/3">
-                          <span className="font-bold whitespace-nowrap">Date:</span>
-                          <span className="border-b border-black flex-1 px-1">{req.receive_date ? formatDisplayDate(req.receive_date) : "—"}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 w-full">
-                        <span className="font-bold whitespace-nowrap">Client Email:</span>
-                        <span className="border-b border-black flex-1 px-1">{req.clientEmail || "—"}</span>
-                      </div>
-
-                      <div className="pt-2">
-                        <div className="font-bold mb-1">Client Signature:</div>
-                        <div className="border border-dashed border-gray-500 bg-gray-50 p-1 inline-block w-full sm:w-auto">
-                          {req.client_signature ? (
-                            <img src={req.client_signature} alt="Client Signature" className="h-16 w-full sm:w-64 object-contain bg-white border border-gray-300" />
-                          ) : (
-                            <span className="text-gray-400 italic">No signature provided</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* TGI INTERNAL USE */}
-                    <div className="border border-black mt-4">
-                      <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">TGI Internal Use:</div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 border-b border-black divide-y sm:divide-y-0 sm:divide-x divide-black text-[11px]">
-                        <div className="p-1 flex items-center gap-1">
-                          <span className="font-semibold">Driver:</span>
-                          <span>{internalUse.driver || "—"}</span>
-                        </div>
-                        <div className="p-1 flex items-center gap-1">
-                          <span className="font-semibold">Vehicle:</span>
-                          <span>{internalUse.vehicle || "—"}</span>
-                        </div>
-                        <div className="p-1 flex items-center gap-1">
-                          <span className="font-semibold">Zone:</span>
-                          <span>{internalUse.zone || "—"}</span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 divide-x divide-black text-[11px]">
-                        <div className="p-1 flex items-center gap-1">
-                          <span className="font-semibold">Bill:</span>
-                          <span>{internalUse.bill || "—"}</span>
-                        </div>
-                        <div className="p-1 flex items-center gap-1">
-                          <span className="font-semibold">Hrs:</span>
-                          <span>{internalUse.hrs || "—"}</span>
-                        </div>
-                        <div className="p-1 flex items-center gap-1">
-                          <span className="font-semibold">Min:</span>
-                          <span>{internalUse.min || "—"}</span>
-                        </div>
-                        <div className="p-1 flex items-center gap-1">
-                          <span className="font-semibold">By:</span>
-                          <span>{internalUse.by || "—"}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="text-gray-500 italic text-[11px] mt-2 text-right">Page 1 of 1</div>
-                  </div>
-                );
-              })
-            )}
+                  );
+                })()
+              ) : (
+                <div className="flex flex-col items-center justify-center text-slate-400 h-full w-full py-20">
+                  <ClipboardCheck size={48} className="mb-4 opacity-30" />
+                  <p className="font-medium text-sm">Select a delivery request from the list to view details.</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -972,6 +1035,22 @@ export default function BillingDashboardPage() {
         variant="destructive"
         icon={<Trash2 size={20} />}
       />
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+      `}</style>
     </div>
   );
 }

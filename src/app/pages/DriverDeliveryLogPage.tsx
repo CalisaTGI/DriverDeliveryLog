@@ -37,10 +37,10 @@ import {
   AlertCircle,
   Save,
   RotateCcw,
-  Sparkles,
   Check,
   Trash2,
   X,
+  WifiOff,
 } from "lucide-react";
 
 export default function DriverDeliveryLogPage() {
@@ -56,11 +56,19 @@ export default function DriverDeliveryLogPage() {
 
   const [date, setDate] = useState(today); // Forces today's date as default on load
   const [driver, setDriver] = useState(initialDraft?.driver || "Dion Lewis");
-  const [jobs, setJobs] = useState<Job[]>(
-    initialDraft?.jobs && initialDraft.jobs.length > 0
-      ? initialDraft.jobs
-      : [makeJob(1, "104200"), makeJob(2, "104201")]
-  );
+  
+  // Guarantee unique IDs across all loaded or initial jobs to prevent state-bleeding
+  const [jobs, setJobs] = useState<Job[]>(() => {
+    const draftJobs = initialDraft?.jobs;
+    if (draftJobs && draftJobs.length > 0) {
+      return draftJobs.map((j, index) => ({
+        ...j,
+        id: Date.now() + index, // Assigns a guaranteed unique ID
+      }));
+    }
+    return [makeJob(Date.now(), "104200"), makeJob(Date.now() + 1, "104201")];
+  });
+
   const [isSigned, setIsSigned] = useState(false);
   const [signatureData, setSignatureData] = useState<string>("");
   const [signatureError, setSignatureError] = useState(false);
@@ -106,7 +114,7 @@ export default function DriverDeliveryLogPage() {
     clearShiftDraft();
     setDate(today);
     setDriver("Dion Lewis");
-    setJobs([makeJob(getNextJobId(), "104202")]);
+    setJobs([makeJob(Date.now(), "104202")]);
     setArrivalTimeBack("");
     setIsSigned(false);
     setSignatureResetKey((prev) => prev + 1);
@@ -160,7 +168,7 @@ export default function DriverDeliveryLogPage() {
     const lastNum = jobs.length
       ? Number(jobs[jobs.length - 1].jobNumber) + 1
       : 104202;
-    setJobs((prev) => [...prev, makeJob(getNextJobId(), String(lastNum))]);
+    setJobs((prev) => [...prev, makeJob(Date.now() + Math.random(), String(lastNum))]);
   };
 
   const handleSaveNewLocation = async (newLocName: string) => {
@@ -284,21 +292,40 @@ export default function DriverDeliveryLogPage() {
       date: date,
       driver: driver,
       signature: signatureData,
-      jobs: jobs.map((job) => ({
-        jobNumber: job.jobNumber,
-        task: job.task,
-        paperwork: job.paperwork,
-        location: job.location,
-        startTime: job.startTime,
-        stopTime: job.stopTime,
-        totalTime: job.totalTime || calcTotal(job.startTime, job.stopTime),
-      })),
+      jobs: jobs.map((job) => {
+        const lockedJobs = JSON.parse(localStorage.getItem('locked_delivery_jobs') || '[]');
+        const isLocked = lockedJobs.includes(job.jobNumber);
+
+        const savedReqStr = localStorage.getItem(`delivery_request_${job.jobNumber}`) || localStorage.getItem(`client_data_${job.jobNumber}`) || '{}';
+        let savedReq: any = {};
+        try {
+          savedReq = JSON.parse(savedReqStr);
+        } catch (e) {}
+
+        const clientSig = savedReq.clientSignature || savedReq.signature || localStorage.getItem(`client_sig_${job.jobNumber}`) || localStorage.getItem(`client_signature_${job.jobNumber}`) || (isLocked ? 'data:image/png;base64,locked' : '');
+        const receivedByName = savedReq.receivedByName || savedReq.name || localStorage.getItem(`received_by_${job.jobNumber}`) || 'Valued Client';
+        const clientEmail = savedReq.clientEmail || savedReq.email || localStorage.getItem(`client_email_${job.jobNumber}`) || '';
+
+        return {
+          jobNumber: job.jobNumber,
+          task: job.task,
+          paperwork: job.paperwork,
+          location: job.location,
+          startTime: job.startTime,
+          stopTime: job.stopTime,
+          totalTime: job.totalTime || calcTotal(job.startTime, job.stopTime),
+          status: isLocked ? "completed" : "pending",
+          client_signature: clientSig,
+          received_by_name: receivedByName,
+          client_email: clientEmail,
+        };
+      }),
       arrivalBackTime: arrivalTimeBack || "—",
-    };
+    };  
 
     const resetForm = () => {
       clearShiftDraft();
-      setJobs([makeJob(getNextJobId(), "104202")]);
+      setJobs([makeJob(Date.now(), "104202")]);
       setArrivalTimeBack("");
       setIsSigned(false);
       setSignatureError(false);
@@ -385,6 +412,21 @@ export default function DriverDeliveryLogPage() {
           </p>
         </div>
 
+        {/* Offline Persistent Banner */}
+        {!isOnline && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 flex items-center justify-between text-xs text-amber-700 dark:text-amber-400 shadow-sm animate-fade-in">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-xl bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <WifiOff size={14} className="text-amber-600 dark:text-amber-400 animate-pulse" />
+              </div>
+              <div>
+                <span className="font-bold">Offline Mode Active: </span>
+                <span>You're currently disconnected. Changes and submissions are being saved safely to device storage.</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Active Shift Draft Indicator & Quick Save Bar */}
         <div className="bg-primary/10 border border-primary/25 rounded-2xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2.5 text-xs shadow-sm">
           <div className="flex items-center gap-2 text-primary font-bold">
@@ -433,47 +475,117 @@ export default function DriverDeliveryLogPage() {
         </div>
 
         {/* Job bubbles */}
-        {jobs.map((job, i) => (
-          <div key={job.id} className="flex flex-col gap-2">
-            <JobBubble
-              job={job}
-              index={i}
-              locationOptions={locationOptions}
-              onRefreshLocations={refreshLocations}
-              onOpenAddLocation={() => {
-                setTargetJobIdForNewLocation(job.id);
-                setIsAddLocationModalOpen(true);
-              }}
-              onChange={(patch) => updateJob(job.id, patch)}
-              onDelete={() => deleteJob(job.id)}
-           />
-           {/* Button to open Delivery Request prepopulated */}
-           <div className="flex justify-end px-1 mb-2">
-              <button
-                type="button"
-                onClick={() => {
-                let hrs = '';
-                let min = '';
-                if (job.startTime && job.stopTime) {
-                  const [startH, startM] = job.startTime.split(':').map(Number);
-                  const [stopH, stopM] = job.stopTime.split(':').map(Number);
-                  const startTotalMin = startH * 60 + startM;
-                  const stopTotalMin = stopH * 60 + stopM;
-                  const diffMin = Math.max(0, stopTotalMin - startTotalMin);
-                  hrs = Math.floor(diffMin / 60).toString();
-                  min = (diffMin % 60).toString();
-                }
+        {jobs.map((job, i) => {
+          const lockedJobs = JSON.parse(localStorage.getItem('locked_delivery_jobs') || '[]');
+          const isJobLocked = lockedJobs.includes(job.jobNumber);
+          
+          return (
+            <div key={job.id} className={`flex flex-col gap-2 p-3 rounded-2xl border transition-all ${isJobLocked ? 'bg-muted/30 border-primary/20 opacity-95' : 'border-transparent'}`}>
+              {isJobLocked && (
+                <div className="flex items-center justify-between px-1">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold bg-primary/10 text-primary rounded-xl border border-primary/20">
+                    <Check size={12} /> Delivery Request Signed & Completed (Locked)
+                  </span>
+                </div>
+              )}
+              <div className={isJobLocked ? "pointer-events-none opacity-75" : ""}>
+                <JobBubble
+                  job={{ ...job, editing: isJobLocked ? false : job.editing }}  
+                  index={i}
+                  locationOptions={locationOptions}
+                  onRefreshLocations={refreshLocations}
+                  onOpenAddLocation={() => {
+                    setTargetJobIdForNewLocation(job.id);
+                    setIsAddLocationModalOpen(true);
+                  }}
+                  onChange={(patch) => {
+                    if (Object.keys(patch).length === 1 && "totalTime" in patch) return;
+                    updateJob(job.id, patch);
+                  }}
+                  onDelete={() => deleteJob(job.id)}
+                />
+              </div>
 
-                window.location.href = `/delivery-request?job=${encodeURIComponent(job.jobNumber || '')}&task=${encodeURIComponent(job.task || '')}&date=${encodeURIComponent(date)}&driver=${encodeURIComponent(driver)}&hrs=${encodeURIComponent(hrs)}&min=${encodeURIComponent(min)}`;
-              }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 border border-primary/20 text-primary font-bold text-xs transition-all cursor-pointer shadow-sm"
-              >
-                <FileText size={12} />
-                Fill Delivery Request
-              </button>
+              {/* Action Bar: Fill Delivery Request Button */}
+              <div className="flex items-center justify-end px-1 mb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isJobLocked) return;
+
+                    // 1. Validate Job Number
+                    if (!job.jobNumber || !job.jobNumber.trim()) {
+                      toast.error("Job Number Required", {
+                        description: "Please enter a Job Number before proceeding to the Delivery Request.",
+                      });
+                      return;
+                    }
+
+                    // 2. Validate Task Code
+                    if (!job.task || !job.task.trim()) {
+                      toast.error("Task Code Required", {
+                        description: "Please enter a Task Code before proceeding to the Delivery Request.",
+                      });
+                      return;
+                    }
+
+                    // 3. Validate Delivery Location
+                    if (!job.location || !job.location.trim()) {
+                      toast.error("Delivery Location Required", {
+                        description: "Please enter or select a Delivery Location before proceeding to the Delivery Request.",
+                      });
+                      return;
+                    }
+
+                    // 4. Validate Arrival Acknowledged
+                    const isAcknowledged = Object.entries(job).some(([key, val]) => {
+                      const k = key.toLowerCase();
+                      return (k.includes('arriv') || k.includes('ack') || k.includes('confirm')) && Boolean(val);
+                    });
+
+                    if (!isAcknowledged) {
+                      toast.error("Arrival Acknowledged Required", {
+                        description: "Please check 'Arrival Acknowledged' before proceeding to the Delivery Request.",
+                      });
+                      return;
+                    }
+
+                    // 5. Validate Start and Stop Times
+                    if (!job.startTime || !job.stopTime) {
+                      toast.error("Times Required", {
+                        description: "Please enter both Start Time and Stop Time before filling the Delivery Request.",
+                      });
+                      return;
+                    }
+
+                    let hrs = '';
+                    let min = '';
+                    if (job.startTime && job.stopTime) {
+                      const [startH, startM] = job.startTime.split(':').map(Number);
+                      const [stopH, stopM] = job.stopTime.split(':').map(Number);
+                      const startTotalMin = startH * 60 + startM;
+                      const stopTotalMin = stopH * 60 + stopM;
+                      const diffMin = Math.max(0, stopTotalMin - startTotalMin);
+                      hrs = Math.floor(diffMin / 60).toString();
+                      min = (diffMin % 60).toString();
+                    }
+
+                    window.location.href = `/delivery-request?job=${encodeURIComponent(job.jobNumber || '')}&task=${encodeURIComponent(job.task || '')}&date=${encodeURIComponent(date)}&driver=${encodeURIComponent(driver)}&hrs=${encodeURIComponent(hrs)}&min=${encodeURIComponent(min)}`;
+                  }}
+                  disabled={isJobLocked}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                    isJobLocked
+                      ? 'bg-muted text-muted-foreground border-border cursor-not-allowed opacity-60'
+                      : 'bg-primary/10 hover:bg-primary/20 border-primary/20 text-primary cursor-pointer shadow-sm'
+                  }`}
+                >
+                  <FileText size={12} />
+                  {isJobLocked ? 'Delivery Request Completed' : 'Fill Delivery Request'}
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Add another job */}
         <button
@@ -485,7 +597,7 @@ export default function DriverDeliveryLogPage() {
           Add Another Job
         </button>
 
-        {/* New Field: Arrival Time Back at Building*/}
+        {/* Arrival Time Back at Building */}
         <div
           className="rounded-2xl border bg-card px-5 py-4 flex flex-col gap-3"
           style={{
