@@ -312,32 +312,32 @@ export default function DeliveryRequestForm() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6 bg-white border border-gray-400 shadow-sm my-4 sm:my-6 font-sans text-xs text-black">
+    <div className="w-full max-w-3xl mx-auto p-3 sm:p-6 bg-white border-y sm:border border-gray-400 shadow-sm sm:my-6 font-sans text-xs text-black">
       <form onSubmit={handleSubmit} className="space-y-4">
         
         {/* HEADER SECTION */}
-        <div className="flex flex-row justify-between items-start gap-2 border-b-2 border-black pb-3">
-          <div className="flex-shrink-0">
+        <div className="flex flex-row justify-between items-center gap-2 border-b-2 border-black pb-3">
+          <div className="flex-shrink-0 max-w-[125px] sm:max-w-none">
             <img src="/TGI-logo.png" alt="TGI Direct Logo" className="h-10 sm:h-12 object-contain mb-1" />
-            <div className="font-bold text-[11px] sm:text-sm leading-tight">Marketing Support Services</div>
-            <div className="text-[8px] sm:text-[10px] text-gray-700 leading-tight">
+            <div className="font-bold text-[10px] sm:text-sm leading-tight">Marketing Support Services</div>
+            <div className="text-[7.5px] sm:text-[10px] text-gray-700 leading-tight">
               P.O. Box, Flint, MI 48507-0354<br />
               (800) 337-2237 Fax (810) 239-4321<br />
               www.tgidirect.com
             </div>
           </div>
 
-          <div className="border border-black w-40 sm:w-60 text-center flex-shrink-0">
+          <div className="border border-black w-[190px] sm:w-60 text-center flex-shrink-0">
             <div className="bg-gray-200 border-b border-black font-bold py-0.5 text-[9px] sm:text-xs">
               Delivery Request
             </div>
-            <div className="grid grid-cols-4 divide-x divide-black border-b border-black text-[7px] sm:text-[11px]">
-              <div className="py-0.5 px-0.5 font-semibold min-w-0">Job</div>
-              <div className="py-0.5 px-0.5 font-semibold min-w-0">Task</div>
-              <div className="py-0.5 px-0.5 font-semibold min-w-0">Desc.</div>
-              <div className="py-0.5 px-0.5 font-semibold min-w-0">Date</div>
+            <div className="grid grid-cols-[60px_20px_45px_65px] sm:grid-cols-[65px_35px_50px_65px] divide-x divide-black border-b border-black text-[6px] sm:text-[11px]">
+              <div className="py-0.5 px-0.5 font-semibold min-w-0 text-center">Job</div>
+              <div className="py-0.5 px-0.5 font-semibold min-w-0 text-center">Task</div>
+              <div className="py-0.5 px-0.5 font-semibold min-w-0 text-center">Desc.</div>
+              <div className="py-0.5 px-0.5 font-semibold min-w-0 text-center">Date</div>
             </div>
-            <div className="grid grid-cols-4 divide-x divide-black min-h-[2rem] items-center text-[7px] sm:text-[11px]">
+            <div className="grid grid-cols-[60px_20px_45px_65px] sm:grid-cols-[65px_35px_50px_65px] divide-x divide-black border-b border-black text-[6px] sm:text-[11px]">
               <input
                 type="text"
                 name="job"
@@ -368,7 +368,7 @@ export default function DeliveryRequestForm() {
                 name="date"
                 value={formData.date}
                 onChange={handleChange}
-                className="w-full min-w-0 text-center focus:outline-none bg-transparent px-0 text-[7px] sm:text-[10px] appearance-none [&::-webkit-calendar-picker-indicator]:hidden"
+                className="w-full min-w-0 text-center focus:outline-none bg-transparent px-0 text-[7px] sm:text-[10px] appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-datetime-edit]:flex [&::-webkit-datetime-edit]:justify-center"
               />
             </div>
           </div>
@@ -508,7 +508,7 @@ export default function DeliveryRequestForm() {
 
           <div className="pt-2">
             <div className="font-bold mb-1">Client Signature: *</div>
-            <div className="border border-dashed border-gray-500 bg-gray-50 p-1 inline-block w-full sm:w-auto overflow-x-auto">
+            <div className="border border-dashed border-gray-500 bg-gray-50 p-1 w-full max-w-[450px] mx-auto overflow-hidden">
               <canvas 
                 ref={canvasRef}
                 width={450}

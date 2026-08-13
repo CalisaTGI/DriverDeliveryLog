@@ -314,9 +314,6 @@ export default function BillingDashboardPage() {
 
   const exportToPdf = () => {
     const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
-    const title = "Driver Delivery Time Logs";
-    doc.setFontSize(14);
-    doc.text(title, 40, 40);
 
     const headers = [
       [
@@ -342,8 +339,9 @@ export default function BillingDashboardPage() {
     autoTable(doc, {
       head: headers,
       body: data,
-      startY: 60,
-      margin: { left: 20, right: 20 },
+      startY: 50,
+      margin: { left: 20, right: 20, top: 45 },
+      showHead: 'everyPage', // Forces column headers to repeat on every page
       theme: "grid",
       headStyles: { fillColor: [124, 92, 252], textColor: 255, fontStyle: "bold" },
       styles: { fontSize: 8, cellPadding: 6, valign: "middle" as const, halign: "left" as const, overflow: "linebreak", cellWidth: "wrap" },
@@ -359,6 +357,12 @@ export default function BillingDashboardPage() {
         8: { cellWidth: 56 },
         9: { cellWidth: 70, minCellHeight: 25 },
         10: { cellWidth: 90 },
+      },
+      didDrawPage: () => {
+        // Automatically renders the title at the top of EVERY page, perfectly aligned with left margin (20)
+        doc.setFontSize(14);
+        doc.setFont("helvetica", "bold");
+        doc.text("Driver Delivery Time Logs", 20, 32);
       },
       didDrawCell: (data) => {
         if (data.section === 'body' && data.column.index === 9) {
@@ -765,7 +769,17 @@ export default function BillingDashboardPage() {
               </div>
             ) : (
               <table className="mx-auto w-full text-left border-collapse min-w-[1000px]">
-                <thead>
+                <thead style={{ display: "table-header-group" }}>
+                  <tr>
+                    <th colSpan={12} className="text-left p-4 border-b-0 bg-white">
+                      <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                        Driver Delivery Time Logs
+                      </h1>
+                      <p className="text-xs text-slate-500 font-mono mt-0.5">
+                        Master Route Records Export
+                      </p>
+                    </th>
+                  </tr>
                   <tr className="bg-slate-100 border-b border-slate-400">
                     <th className="px-3 py-3 text-xs font-bold uppercase text-slate-700 text-center w-24 border-r border-slate-300">Details</th>
                     <th className="px-4 py-3 text-xs font-bold uppercase text-slate-700 border-r border-slate-300 w-28">Date</th>
@@ -786,6 +800,7 @@ export default function BillingDashboardPage() {
                     <tr
                       key={`log-${log.id || 'no-id'}-${idx}`}
                       onClick={() => setSelectedLogForDetails(log)}
+                      style={{ pageBreakInside: "avoid", breakInside: "avoid" }}
                       className={`border-b border-slate-300 transition-colors cursor-pointer hover:bg-violet-50/50 ${idx % 2 === 1 ? "bg-slate-50/40" : "bg-white"}`}
                     >
                       <td className="px-3 py-3 text-center border-r border-slate-200">
@@ -1059,6 +1074,10 @@ export default function BillingDashboardPage() {
       />
 
       <style>{`
+        @media print {
+          thead { display: table-header-group; }
+          tr { page-break-inside: avoid; break-inside: avoid; }
+        }
         .custom-scrollbar::-webkit-scrollbar {
           width: 6px;
         }
