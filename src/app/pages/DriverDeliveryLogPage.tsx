@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Toaster } from "../components/ui/sonner";
 import { InputDialogModal } from "../components/ui/InputDialogModal";
@@ -44,6 +45,7 @@ import {
 } from "lucide-react";
 
 export default function DriverDeliveryLogPage() {
+  const navigate = useNavigate();
   const today = (() => {
     const local = new Date();
     const offset = local.getTimezoneOffset();
@@ -63,10 +65,11 @@ export default function DriverDeliveryLogPage() {
     if (draftJobs && draftJobs.length > 0) {
       return draftJobs.map((j, index) => ({
         ...j,
-        id: Date.now() + index, // Assigns a guaranteed unique ID
+        id: Date.now() + index,
       }));
     }
-    return [makeJob(Date.now(), "104200"), makeJob(Date.now() + 1, "104201")];
+    // Start with blank job numbers so they act as placeholders and never pre-lock
+    return [makeJob(Date.now(), ""), makeJob(Date.now() + 1, "")];
   });
 
   const [isSigned, setIsSigned] = useState(false);
@@ -114,7 +117,7 @@ export default function DriverDeliveryLogPage() {
     clearShiftDraft();
     setDate(today);
     setDriver("Dion Lewis");
-    setJobs([makeJob(Date.now(), "104202")]);
+    setJobs([makeJob(Date.now(), "")]);
     setArrivalTimeBack("");
     setIsSigned(false);
     setSignatureResetKey((prev) => prev + 1);
@@ -165,10 +168,8 @@ export default function DriverDeliveryLogPage() {
   }, []);
 
   const addJob = () => {
-    const lastNum = jobs.length
-      ? Number(jobs[jobs.length - 1].jobNumber) + 1
-      : 104202;
-    setJobs((prev) => [...prev, makeJob(Date.now() + Math.random(), String(lastNum))]);
+    // Add a new job row with a blank job number so the driver can type it in
+    setJobs((prev) => [...prev, makeJob(Date.now() + Math.random(), "")]);
   };
 
   const handleSaveNewLocation = async (newLocName: string) => {
@@ -275,13 +276,15 @@ export default function DriverDeliveryLogPage() {
       return;
     }
 
-    if (jobs.length === 0) {
-      toast.error("No Delivery Log Entries", {
-        description:
-          "Please add at least one delivery log entry before completing your day.",
-        duration: 4000,
-      });
-      return;
+    for (let i = 0; i < jobs.length; i++) {
+      const job = jobs[i];
+      if (!job.jobNumber || !job.jobNumber.trim() || !job.task || !job.task.trim() || !job.location || !job.location.trim() || !job.startTime || !job.stopTime) {
+        toast.error(`Incomplete Entry (Row #${i + 1})`, {
+          description: "Please ensure Job Number, Task Code, Location, and Start/Stop Times are filled out for all entries before finishing your day.",
+          duration: 5000,
+        });
+        return;
+      }
     }
 
     const clientTxId = `tx_${Date.now()}_${Math.random()
@@ -325,7 +328,7 @@ export default function DriverDeliveryLogPage() {
 
     const resetForm = () => {
       clearShiftDraft();
-      setJobs([makeJob(Date.now(), "104202")]);
+      setJobs([makeJob(Date.now(), "")]);
       setArrivalTimeBack("");
       setIsSigned(false);
       setSignatureError(false);
@@ -570,7 +573,7 @@ export default function DriverDeliveryLogPage() {
                       min = (diffMin % 60).toString();
                     }
 
-                    window.location.href = `/delivery-request?job=${encodeURIComponent(job.jobNumber || '')}&task=${encodeURIComponent(job.task || '')}&date=${encodeURIComponent(date)}&driver=${encodeURIComponent(driver)}&hrs=${encodeURIComponent(hrs)}&min=${encodeURIComponent(min)}`;
+                    navigate(`/delivery-request?job=${encodeURIComponent(job.jobNumber || '')}&task=${encodeURIComponent(job.task || '')}&date=${encodeURIComponent(date)}&driver=${encodeURIComponent(driver)}&hrs=${encodeURIComponent(hrs)}&min=${encodeURIComponent(min)}`);
                   }}
                   disabled={isJobLocked}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${

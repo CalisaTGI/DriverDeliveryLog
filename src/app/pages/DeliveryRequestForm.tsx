@@ -210,11 +210,19 @@ export default function DeliveryRequestForm() {
       return;
     }
 
-    const signatureData = canvasRef.current?.toDataURL() || formData.clientSignature;
-
-    if (!signatureData) {
-      alert('Client signature is required.');
-      return;
+    // 1. Detect if the canvas is completely blank
+    let signatureData = formData.clientSignature;
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const blankCanvas = document.createElement('canvas');
+      blankCanvas.width = canvas.width;
+      blankCanvas.height = canvas.height;
+      
+      if (canvas.toDataURL() === blankCanvas.toDataURL()) {
+        signatureData = '';
+      } else {
+        signatureData = canvas.toDataURL();
+      }
     }
 
     const payload = {
@@ -256,13 +264,32 @@ export default function DeliveryRequestForm() {
       }
     }
 
-    const lockedJobs = JSON.parse(localStorage.getItem('locked_delivery_jobs') || '[]');
-    if (formData.job && !lockedJobs.includes(formData.job)) {
-      lockedJobs.push(formData.job);
-      localStorage.setItem('locked_delivery_jobs', JSON.stringify(lockedJobs));
+    // 2. Check if the user actually filled out any form data before locking the job
+    const hasFilledData = 
+      Boolean(signatureData && signatureData.trim() !== '') ||
+      Boolean(formData.deliverTo?.name?.trim()) ||
+      Boolean(formData.deliverTo?.company?.trim()) ||
+      Boolean(formData.deliverTo?.address1?.trim()) ||
+      Boolean(formData.workFor?.company?.trim()) ||
+      Boolean(formData.instructions?.trim()) ||
+      Boolean(formData.details?.trim()) ||
+      Boolean(formData.receivedByName?.trim()) ||
+      Boolean(formData.clientEmail?.trim());
+
+    // Only lock the job if actual data was provided
+    if (hasFilledData) {
+      const lockedJobs = JSON.parse(localStorage.getItem('locked_delivery_jobs') || '[]');
+      if (formData.job && !lockedJobs.includes(formData.job)) {
+        lockedJobs.push(formData.job);
+        localStorage.setItem('locked_delivery_jobs', JSON.stringify(lockedJobs));
+      }
     }
 
-    localStorage.setItem(`delivery_request_${formData.job}`, JSON.stringify(formData));
+    // 3. Save to localStorage
+    localStorage.setItem(`delivery_request_${formData.job}`, JSON.stringify({
+      ...formData,
+      clientSignature: signatureData
+    }));
 
     setFormData({
       job: '',
@@ -281,7 +308,7 @@ export default function DeliveryRequestForm() {
     });
     
     clearSignature();
-    navigate('/');
+    navigate(-1);
   };
 
   return (

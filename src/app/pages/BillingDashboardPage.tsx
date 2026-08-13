@@ -115,15 +115,6 @@ export default function BillingDashboardPage() {
       });
   }, []);
 
-  // Auto-select the first request when the tab opens or filters change
-  useEffect(() => {
-    if (activeTab === "requests" && filteredRequests.length > 0) {
-      if (!selectedRequest || !filteredRequests.find(r => r.id === selectedRequest.id)) {
-        setSelectedRequest(filteredRequests[0]);
-      }
-    }
-  }, [activeTab, deliveryRequests, selectedRequest]); // Note: Using deliveryRequests in dependency as filteredRequests isn't hoisted yet
-
   const isIncompleteLog = (log: DatabaseLog) => {
     const hasJobNumber = !!log.job_number?.trim();
     const hasCompleteTime = !!log.start_time?.trim() && !!log.stop_time?.trim() && !!log.total_time?.trim();
@@ -131,41 +122,92 @@ export default function BillingDashboardPage() {
   };
 
   const visibleLogs = logs.filter((log) => !isIncompleteLog(log));
-  
-  const uniqueLogDrivers = Array.from(new Set(visibleLogs.map((log) => log.driver_name))).sort();
-  const uniqueRequestDrivers = Array.from(new Set(deliveryRequests.map((req) => {
-    const internalUse = typeof req.internal_use === 'string' ? JSON.parse(req.internal_use || '{}') : (req.internalUse || req.internal_use || {});
-    return internalUse.driver;
-  }).filter(Boolean))).sort();
 
-  const uniqueDrivers = activeTab === "logs" ? uniqueLogDrivers : uniqueRequestDrivers;
+  // --- SAFE DRIVER EXTRACTORS ---
+  const getLogDriver = (log: any): string => {
+    return (log.driver_name || log.driver || log.driverName || "").trim();
+  };
+  
+  const getReqDriver = (req: any): string => {
+    let internalUse = req.internal_use;
+    if (typeof internalUse === 'string') {
+      try {
+        internalUse = JSON.parse(internalUse || '{}');
+      } catch (e) {
+        internalUse = {};
+      }
+    }
+    return (req.driver || req.driver_name || internalUse?.driver || internalUse?.driver_name || "").trim();
+  };
+  
+  const uniqueLogDrivers = Array.from(
+    new Set(visibleLogs.map(getLogDriver).filter(Boolean))
+  ).sort() as string[];
+
+  const uniqueRequestDrivers = Array.from(
+    new Set(deliveryRequests.map(getReqDriver).filter(Boolean))
+  ).sort() as string[];
+
+  const uniqueDrivers = Array.from(
+    new Set([...uniqueLogDrivers, ...uniqueRequestDrivers])
+  ).sort() as string[];
 
   const filteredLogs = visibleLogs.filter((log) => {
-    const matchesDriver = selectedDriver === "All Drivers" ? true : log.driver_name === selectedDriver;
-    const matchesSearch =
-      (log.driver_name && log.driver_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (log.job_number && log.job_number.includes(searchTerm));
+    const driverName = getLogDriver(log);
+    const matchesDriver =
+      selectedDriver === "All Drivers" ||
+      (driverName && selectedDriver && driverName.toLowerCase() === selectedDriver.toLowerCase());
+
+    const query = searchTerm.trim().toLowerCase();
+    const matchesSearch = !query || [
+      driverName,
+      log.job_number,
+      log.location,
+      log.task_letter,
+      log.log_date,
+      log.arrival_back_time,
+    ].some((field) => field && String(field).toLowerCase().includes(query));
+
     return matchesDriver && matchesSearch;
   });
 
   const filteredRequests = deliveryRequests.filter((req) => {
-    const internalUse = typeof req.internal_use === 'string' ? JSON.parse(req.internal_use || '{}') : (req.internalUse || req.internal_use || {});
-    const driverName = internalUse.driver || "";
+    const driverName = getReqDriver(req);
 
-    const matchesDriver = selectedDriver === "All Drivers" ? true : driverName === selectedDriver;
+    const matchesDriver =
+      selectedDriver === "All Drivers" ||
+      (driverName && selectedDriver && driverName.toLowerCase() === selectedDriver.toLowerCase());
+
     const matchesDate = (!startDate || !req.date || req.date >= startDate) && (!endDate || !req.date || req.date <= endDate);
 
-    const term = searchTerm.toLowerCase();
-    const matchesSearch = !searchTerm || (
-      (req.job_number && req.job_number.toLowerCase().includes(term)) ||
-      (req.received_by_name && req.received_by_name.toLowerCase().includes(term)) ||
-      (req.instructions && req.instructions.toLowerCase().includes(term)) ||
-      (req.description && req.description.toLowerCase().includes(term)) ||
-      (driverName.toLowerCase().includes(term))
-    );
+    const term = searchTerm.trim().toLowerCase();
+    const matchesSearch = !term || [
+      req.job_number,
+      req.task,
+      req.received_by_name,
+      req.instructions,
+      req.description,
+      req.client_email,
+      req.clientEmail,
+      driverName,
+      req.date,
+    ].some((field) => field && String(field).toLowerCase().includes(term));
 
     return matchesDriver && matchesDate && matchesSearch;
   });
+
+  // Auto-select the first request when the tab opens or filters change
+  useEffect(() => {
+    if (activeTab === "requests") {
+      if (filteredRequests.length > 0) {
+        if (!selectedRequest || !filteredRequests.find(r => r.id === selectedRequest.id)) {
+          setSelectedRequest(filteredRequests[0]);
+        }
+      } else {
+        setSelectedRequest(null);
+      }
+    }
+  }, [activeTab, filteredRequests, selectedRequest]);
 
   const formatDisplayDate = (isoStr: string) => {
     if (!isoStr) return "—";
@@ -209,7 +251,7 @@ export default function BillingDashboardPage() {
     filteredLogs.forEach((log) => {
       const row = worksheet.addRow([
         formatDisplayDate(log.log_date),
-        log.driver_name,
+        getLogDriver(log) || "—",
         log.job_number,
         log.task_letter || "—",
         log.paperwork === 1 ? "YES" : "—",
@@ -285,7 +327,7 @@ export default function BillingDashboardPage() {
 
     const data = filteredLogs.map((log) => [
       formatDisplayDate(log.log_date),
-      log.driver_name,
+      getLogDriver(log) || "—",
       log.job_number,
       log.task_letter || "—",
       log.paperwork === 1 ? "YES" : "—",
@@ -367,7 +409,6 @@ export default function BillingDashboardPage() {
     doc.save(`Driver_Delivery_Time_Log_${driverNameForFile}_${startDate}_to_${endDate}.pdf`);
   };
 
-  // Helper to load image as Base64 for jsPDF
   const loadImageAsBase64 = (url: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
@@ -389,7 +430,6 @@ export default function BillingDashboardPage() {
     });
   };
 
-  // Export Delivery Requests to PDF matching exact form layout cleanly
   const exportRequestsToPdf = async () => {
     if (filteredRequests.length === 0) {
       toast.error("No delivery requests to export.");
@@ -409,12 +449,10 @@ export default function BillingDashboardPage() {
       const margin = 35;
       let y = 35;
 
-      // Outer border box matching form container cleanly within A4 height
       doc.setLineWidth(0.8);
       doc.setDrawColor(80, 80, 80);
       doc.rect(margin, y, 525, 580);
 
-      // --- HEADER SECTION ---
       y += 12;
       if (logoBase64) {
         try {
@@ -440,7 +478,6 @@ export default function BillingDashboardPage() {
       doc.text("(800) 337-2237 Fax (810) 239-4321", margin + 12, y + 63);
       doc.text("www.tgidirect.com", margin + 12, y + 72);
 
-      // Delivery Request Table (Top Right)
       const tableX = 335;
       const tableY = y + 5;
       doc.setDrawColor(0, 0, 0);
@@ -452,7 +489,6 @@ export default function BillingDashboardPage() {
       doc.setFontSize(8.5);
       doc.text("Delivery Request", tableX + 102.5, tableY + 11, { align: "center" });
 
-      // Columns: Job, Task, Description, Date
       doc.line(tableX, tableY + 15, tableX + 205, tableY + 15);
       doc.line(tableX + 45, tableY + 15, tableX + 45, tableY + 48);
       doc.line(tableX + 80, tableY + 15, tableX + 80, tableY + 48);
@@ -471,16 +507,13 @@ export default function BillingDashboardPage() {
       doc.text(req.description || "—", tableX + 110, tableY + 40, { align: "center" });
       doc.text(req.date ? formatDisplayDate(req.date) : "—", tableX + 172.5, tableY + 40, { align: "center" });
 
-      // Horizontal Divider under header
       y += 88;
       doc.line(margin, y, margin + 525, y);
 
-      // --- DELIVER TO & WORK FOR BOXES ---
       y += 12;
       const boxWidth = 250;
       const boxHeight = 82;
 
-      // Deliver To Box
       doc.rect(margin + 12, y, boxWidth, boxHeight);
       doc.setFillColor(230, 230, 230);
       doc.rect(margin + 12, y, boxWidth, 15, "F");
@@ -495,7 +528,6 @@ export default function BillingDashboardPage() {
       doc.text(deliverTo.address1 || "—", margin + 18, y + 53);
       doc.text(deliverTo.address2 || "", margin + 18, y + 66);
 
-      // Work For Box
       doc.rect(margin + 267, y, boxWidth, boxHeight);
       doc.setFillColor(230, 230, 230);
       doc.rect(margin + 267, y, boxWidth, 15, "F");
@@ -509,7 +541,6 @@ export default function BillingDashboardPage() {
       doc.text(workFor.address1 || "—", margin + 273, y + 48);
       doc.text(workFor.address2 || "", margin + 273, y + 64);
 
-      // --- INSTRUCTIONS BOX ---
       y += 94;
       doc.rect(margin + 12, y, 505, 30);
       doc.setFillColor(230, 230, 230);
@@ -522,7 +553,6 @@ export default function BillingDashboardPage() {
       doc.setFontSize(8);
       doc.text(req.instructions || "—", margin + 18, y + 23);
 
-      // --- DETAILS BOX ---
       y += 38;
       doc.rect(margin + 12, y, 505, 115);
       doc.setFillColor(230, 230, 230);
@@ -535,9 +565,7 @@ export default function BillingDashboardPage() {
       doc.setFontSize(8);
       doc.text(req.details || "—", margin + 18, y + 25, { maxWidth: 485 });
 
-      // --- RECEIVED BY & SIGNATURE BOX ---
       y += 123;
-      // Increased box height from 88 to 108 to fit the email field
       doc.rect(margin + 12, y, 505, 108); 
       
       doc.setFont("helvetica", "bold");
@@ -553,15 +581,12 @@ export default function BillingDashboardPage() {
       doc.text(req.receive_date ? formatDisplayDate(req.receive_date) : "—", margin + 335, y + 18);
       doc.line(margin + 330, y + 21, margin + 470, y + 21);
 
-      // Add the Client Email row
       doc.setFont("helvetica", "bold");
       doc.text("Client Email:", margin + 18, y + 36);
       doc.setFont("helvetica", "normal");
-      // Check for both camelCase and snake_case depending on API response
       doc.text(req.clientEmail || req.client_email || "—", margin + 85, y + 36); 
       doc.line(margin + 80, y + 39, margin + 270, y + 39);
 
-      // Shifted signature text and image down to row 3
       doc.setFont("helvetica", "bold");
       doc.text("Client Signature:", margin + 18, y + 56);
       if (req.client_signature && req.client_signature.startsWith('data:image')) {
@@ -570,8 +595,6 @@ export default function BillingDashboardPage() {
         } catch (e) {}
       }
 
-      // --- TGI INTERNAL USE BOX ---
-      // Shifted down from 96 to 116 to account for the taller box above
       y += 116; 
       doc.rect(margin + 12, y, 505, 58);
       doc.setFillColor(230, 230, 230);
@@ -600,7 +623,6 @@ export default function BillingDashboardPage() {
       doc.text(`Min: ${internalUse.min || "—"}`, margin + 252, y + 48);
       doc.text(`By: ${internalUse.by || "—"}`, margin + 365, y + 48);
 
-      // Page Number Footer (Nicely padded inside bottom border)
       doc.setFontSize(7.5);
       doc.setFont("helvetica", "italic");
       doc.text(`Page ${idx + 1} of ${filteredRequests.length}`, margin + 500, y + 72, { align: "right" });
@@ -643,7 +665,7 @@ export default function BillingDashboardPage() {
                   activeTab === "requests" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                <ClipboardCheck size={14} /> Delivery Requests & Sign-offs ({deliveryRequests.length})
+                <ClipboardCheck size={14} /> Delivery Requests & Sign-offs ({filteredRequests.length})
               </button>
             </div>
 
@@ -762,7 +784,7 @@ export default function BillingDashboardPage() {
                 <tbody>
                   {filteredLogs.map((log, idx) => (
                     <tr
-                      key={log.id}
+                      key={`log-${log.id || 'no-id'}-${idx}`}
                       onClick={() => setSelectedLogForDetails(log)}
                       className={`border-b border-slate-300 transition-colors cursor-pointer hover:bg-violet-50/50 ${idx % 2 === 1 ? "bg-slate-50/40" : "bg-white"}`}
                     >
@@ -779,7 +801,7 @@ export default function BillingDashboardPage() {
                         </button>
                       </td>
                       <td className="px-4 py-3 text-xs font-bold text-slate-600 border-r border-slate-200">{formatDisplayDate(log.log_date)}</td>
-                      <td className="px-4 py-3 text-sm font-extrabold text-slate-900 border-r border-slate-200">{log.driver_name}</td>
+                      <td className="px-4 py-3 text-sm font-extrabold text-slate-900 border-r border-slate-200">{getLogDriver(log) || "—"}</td>
                       <td className="px-4 py-3 text-sm font-bold font-mono text-primary border-r border-slate-200">{log.job_number}</td>
                       <td className="px-3 py-3 text-sm font-extrabold font-mono text-center text-slate-800 border-r border-slate-200">{log.task_letter || "—"}</td>
                       <td className="px-3 py-3 text-sm font-bold text-center border-r border-slate-200">
@@ -806,8 +828,8 @@ export default function BillingDashboardPage() {
                 </tbody>
               </table>
             )}
+            </div>
           </div>
-        </div>
         )}
 
         {/* TAB CONTENT: DELIVERY REQUESTS & SIGN-OFFS (SPLIT SCREEN LAYOUT) */}
@@ -825,12 +847,12 @@ export default function BillingDashboardPage() {
                   No delivery requests found.
                 </div>
               ) : (
-                filteredRequests.map((req) => {
+                filteredRequests.map((req, idx) => {
                   const deliverTo = typeof req.deliverTo === 'string' ? JSON.parse(req.deliverTo || '{}') : (req.deliverTo || {});
                   const isSelected = selectedRequest?.id === req.id;
                   return (
                     <button
-                      key={req.id}
+                      key={`req-${req.id || 'no-id'}-${idx}`}
                       onClick={() => setSelectedRequest(req)}
                       className={`text-left p-4 rounded-2xl border transition-all flex flex-col gap-1.5 ${
                         isSelected 
@@ -1029,7 +1051,7 @@ export default function BillingDashboardPage() {
         onClose={() => setLogToDelete(null)}
         onConfirm={confirmDeleteLog}
         title="Delete Delivery Log Record?"
-        description={`Are you sure you want to delete log #${logToDelete?.id} for ${logToDelete?.driver_name} (Job #${logToDelete?.job_number})? This action cannot be undone.`}
+        description={`Are you sure you want to delete log #${logToDelete?.id} for ${logToDelete ? getLogDriver(logToDelete) : ""} (Job #${logToDelete?.job_number})? This action cannot be undone.`}
         confirmText="Delete Record"
         cancelText="Cancel"
         variant="destructive"
