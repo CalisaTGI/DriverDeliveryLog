@@ -137,7 +137,7 @@ export default function BillingDashboardPage() {
     // 2. Add Header Row
     const headers = [
       "Date", "Driver", "Job Number", "Task Code", "Paperwork", 
-      "Pick Up / Delivery Location", "Start Time", "Stop Time", "Total Time", "Arrival Time Back at Building"
+      "Pick Up / Delivery Location", "Start Time", "Stop Time", "Total Time", "Signature", "Arrival Time Back at Building"
     ];
     const headerRow = worksheet.addRow(headers);
     
@@ -149,7 +149,7 @@ export default function BillingDashboardPage() {
 
     // 3. Add the Data
     filteredLogs.forEach((log) => {
-      worksheet.addRow([
+      const row = worksheet.addRow([
         formatDisplayDate(log.log_date),
         log.driver_name,
         log.job_number,
@@ -159,8 +159,25 @@ export default function BillingDashboardPage() {
         log.start_time || "—",
         log.stop_time || "—",
         log.total_time || "—",
+        "",
         log.arrival_back_time || "—"
       ]);
+
+      if (log.signature && log.signature.startsWith('data:image')) {
+        try {
+          const imageId = workbook.addImage({
+            base64: log.signature,
+            extension: 'png',
+          });
+          worksheet.addImage(imageId, {
+            tl: { col: 9, row: row.number - 1 },
+            ext: { width: 90, height: 30 }
+          });
+          row.height = 35;
+        } catch (err) {
+          console.error("Error embedding signature in Excel:", err);
+        }
+      }
     });
 
     // 4. Add the Footer
@@ -170,7 +187,7 @@ export default function BillingDashboardPage() {
     worksheet.getCell(`I${footerRow.number}`).alignment = { horizontal: 'right' };
 
     // 5. AUTO-FIT COLUMNS LOGIC
-    for (let i = 1; i <= 10; i++) {
+    for (let i = 1; i <= 11; i++) {
       const column = worksheet.getColumn(i);
       let maxLength = 0;
       column.eachCell?.({ includeEmpty: true }, (cell: any) => {
@@ -214,6 +231,7 @@ export default function BillingDashboardPage() {
         "Start Time",
         "Stop Time",
         "Total Time",
+        "Signature",
         "Arrival Time Back at Building",
       ],
     ];
@@ -228,6 +246,7 @@ export default function BillingDashboardPage() {
       log.start_time || "—",
       log.stop_time || "—",
       log.total_time || "—",
+      "",
       log.arrival_back_time || "—",
     ]);
 
@@ -248,8 +267,27 @@ export default function BillingDashboardPage() {
         6: { cellWidth: 56 },
         7: { cellWidth: 56 },
         8: { cellWidth: 56 },
-        9: { cellWidth: 120 },
+        9: { cellWidth: 70, minCellHeight: 25 },
+        10: { cellWidth: 90 },
       },
+      didDrawCell: (data) => {
+        if (data.section === 'body' && data.column.index === 9) {
+          const log = filteredLogs[data.row.index];
+          if (log && log.signature && log.signature.startsWith('data:image')) {
+            try {
+              doc.addImage(
+                log.signature,
+                'PNG',
+                data.cell.x + 3,
+                data.cell.y + 2,
+                data.cell.width - 6,
+                data.cell.height - 4
+              );
+            } catch (err) {
+            }
+          }
+        }
+      }
     });
 
     const finalY = (doc as any).lastAutoTable?.finalY || 60;
@@ -387,6 +425,7 @@ export default function BillingDashboardPage() {
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-r border-slate-300 font-mono text-center w-24">Start Time</th>
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-r border-slate-300 font-mono text-center w-24">Stop Time</th>
                   <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-r border-slate-300 font-mono text-center bg-violet-50/50 w-24">Total Time</th>
+                  <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 border-r border-slate-300 font-sans text-center w-36">Signature</th>
                   <th className={`px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 font-mono text-center w-48 ${ENABLE_DELETE_ROW_UI ? "border-r border-slate-300" : ""}`}>Arrival Time Back at Building</th>
                   {ENABLE_DELETE_ROW_UI && (
                     <th className="px-3 py-3 text-xs font-bold uppercase tracking-wider text-slate-700 text-center w-16">Delete</th>
@@ -429,6 +468,13 @@ export default function BillingDashboardPage() {
                     <td className="px-4 py-3 text-xs font-bold font-mono text-center text-slate-600 border-r border-slate-200">{log.start_time || "—"}</td>
                     <td className="px-4 py-3 text-xs font-bold font-mono text-center text-slate-600 border-r border-slate-200">{log.stop_time || "—"}</td>
                     <td className="px-4 py-3 text-sm font-extrabold font-mono text-center text-primary border-r border-slate-200 bg-violet-50/20">{log.total_time || "—"}</td>
+                    <td className="px-4 py-3 text-center border-r border-slate-200">
+                      {log.signature ? (
+                        <img src={log.signature} alt="Driver Signature" className="h-8 max-w-[110px] object-contain mx-auto bg-white border border-slate-200 rounded p-0.5 shadow-2xs" />
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                    </td>
                     <td className={`px-4 py-3 text-xs font-bold font-mono text-center text-slate-800 ${ENABLE_DELETE_ROW_UI ? "border-r border-slate-200" : ""}`}>{log.arrival_back_time || "—"}</td>
                     {ENABLE_DELETE_ROW_UI && (
                       <td className="px-3 py-3 text-center">

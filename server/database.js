@@ -42,6 +42,7 @@ export async function initDb() {
       stop_time TEXT,
       total_time TEXT,
       arrival_back_time TEXT,
+      signature TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);

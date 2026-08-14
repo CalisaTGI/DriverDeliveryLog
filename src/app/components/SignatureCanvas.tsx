@@ -2,7 +2,7 @@ import React, { useState, useRef } from "react";
 import { RotateCcw } from "lucide-react";
 
 interface SignatureCanvasProps {
-  onSignatureChange: (isSigned: boolean) => void;
+  onSignatureChange: (isSigned: boolean, dataUrl?: string) => void;
   hasError?: boolean;
 }
 
@@ -43,7 +43,8 @@ export function SignatureCanvas({
   const move = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     if (!drawing.current) return;
-    const ctx = canvasRef.current!.getContext("2d")!;
+    const canvas = canvasRef.current!;
+    const ctx = canvas.getContext("2d")!;
     ctx.strokeStyle = "#7c5cfc";
     ctx.lineWidth = 2.5;
     ctx.lineCap = "round";
@@ -54,19 +55,24 @@ export function SignatureCanvas({
 
     if (!signed) {
       setSigned(true);
-      onSignatureChange(true);
+      const dataUrl = canvas.toDataURL("image/png");
+      onSignatureChange(true, dataUrl);
     }
   };
 
   const end = () => {
-    drawing.current = false;
+    if (drawing.current && canvasRef.current) {
+      drawing.current = false;
+      const dataUrl = canvasRef.current.toDataURL("image/png");
+      onSignatureChange(true, dataUrl);
+    }
   };
 
   const clear = () => {
     const canvas = canvasRef.current!;
     canvas.getContext("2d")!.clearRect(0, 0, canvas.width, canvas.height);
     setSigned(false);
-    onSignatureChange(false);
+    onSignatureChange(false, "");
   };
 
   return (

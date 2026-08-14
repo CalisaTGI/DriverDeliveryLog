@@ -62,6 +62,7 @@ export default function DriverDeliveryLogPage() {
       : [makeJob(1, "104200"), makeJob(2, "104201")]
   );
   const [isSigned, setIsSigned] = useState(false);
+  const [signatureData, setSignatureData] = useState<string>("");
   const [signatureError, setSignatureError] = useState(false);
   const signatureCardRef = useRef<HTMLDivElement>(null);
   const [arrivalTimeBack, setArrivalTimeBack] = useState(
@@ -85,8 +86,11 @@ export default function DriverDeliveryLogPage() {
     );
   }, [date, driver, jobs, arrivalTimeBack]);
 
-  const handleSignatureChange = useCallback((signed: boolean) => {
+  const handleSignatureChange = useCallback((signed: boolean, dataUrl?: string) => {
     setIsSigned(signed);
+    if (dataUrl) {
+      setSignatureData(dataUrl);
+    }
     if (signed) {
       setSignatureError(false);
     }
@@ -240,6 +244,13 @@ export default function DriverDeliveryLogPage() {
   const driveTotal = sumTimes(jobs);
 
   const executeFinishDay = async () => {
+    if (!arrivalTimeBack || arrivalTimeBack.trim() === "") {
+      toast.error("Arrival Time Required", {
+        description: "Please record your arrival time back at the building before finishing your day.", duration: 4000,
+        });
+        return;
+      }
+
     if (!isSigned) {
       setSignatureError(true);
       if (signatureCardRef.current) {
@@ -272,6 +283,7 @@ export default function DriverDeliveryLogPage() {
       clientTxId,
       date: date,
       driver: driver,
+      signature: signatureData,
       jobs: jobs.map((job) => ({
         jobNumber: job.jobNumber,
         task: job.task,

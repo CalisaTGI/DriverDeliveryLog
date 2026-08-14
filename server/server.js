@@ -97,8 +97,8 @@ app.post('/api/submit-day', async (req, res) => {
 
       await db.run(
         `INSERT INTO delivery_logs 
-        (client_tx_id, log_date, driver_name, job_number, task_letter, paperwork, location, start_time, stop_time, total_time, arrival_back_time) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (client_tx_id, log_date, driver_name, job_number, task_letter, paperwork, location, start_time, stop_time, total_time, arrival_back_time, signature) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           clientTxId || null,
           date,
@@ -110,7 +110,8 @@ app.post('/api/submit-day', async (req, res) => {
           job.startTime,
           job.stopTime,
           totalJobTime,
-          arrivalBackTime || "—"
+          arrivalBackTime || "—",
+          req.body.signature || null
         ]
       );
     }
@@ -157,7 +158,7 @@ app.get('/api/billing-export', async (req, res) => {
     
     const { start, end } = req.query;
     let query = `
-      SELECT id, log_date, driver_name, job_number, task_letter, paperwork, location, start_time, stop_time, total_time, arrival_back_time 
+      SELECT id, log_date, driver_name, job_number, task_letter, paperwork, location, start_time, stop_time, total_time, arrival_back_time, signature
       FROM delivery_logs 
     `;
     const params = [];
