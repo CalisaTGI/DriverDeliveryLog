@@ -1,6 +1,8 @@
 import React, { useState } from "react";
+import { toast } from "sonner";
 import { Job } from "../types/deliveryLog";
 import { calcTotal } from "../utils/timeCalculations";
+import { getApiUrl } from "../lib/apiConfig";
 import {
   MapPin,
   Clock,
@@ -30,15 +32,48 @@ export function JobBubble({
   index,
   locationOptions,
   onOpenAddLocation,
+  onRefreshLocations,
   onChange,
   onDelete,
 }: JobBubbleProps) {
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pendingLocationToDelete, setPendingLocationToDelete] = useState<string | null>(null);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [isRemovingLocation, setIsRemovingLocation] = useState(false);
   const total = calcTotal(job.startTime, job.stopTime);
 
   const displayTotal =
     job.totalTime !== undefined && job.totalTime !== "" ? job.totalTime : total;
+
+  const handleRemoveLocation = async (locationName: string) => {
+    if (!locationName) return;
+
+    try {
+      setIsRemovingLocation(true);
+      const response = await fetch(getApiUrl("/api/locations"), {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: locationName }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error || "Unable to remove location.");
+      }
+
+      await onRefreshLocations();
+      toast.success("Location removed", {
+        description: `"${locationName}" was removed from your quick-pick list.`,
+      });
+    } catch (error: any) {
+      toast.error("Unable to remove location", {
+        description: error?.message || "Please try again.",
+      });
+    } finally {
+      setIsRemovingLocation(false);
+      setPendingLocationToDelete(null);
+      setShowLocationDropdown(false);
+    }
+  };
 
   return (
     <div
@@ -207,18 +242,69 @@ export function JobBubble({
             {showLocationDropdown && job.editing && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden max-h-56 overflow-y-auto">
                 {locationOptions.map((loc) => (
-                  <button
-                    key={loc}
-                    type="button"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      onChange({ location: loc });
-                      setShowLocationDropdown(false);
-                    }}
-                    className="w-full text-left px-4 py-3 text-sm font-semibold text-foreground hover:bg-primary/10 hover:text-primary transition-colors border-b border-border last:border-0"
-                  >
-                    📍 {loc}
-                  </button>
+                  <div key={loc} className="flex items-center border-b border-border last:border-0">
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        onChange({ location: loc });
+                        setShowLocationDropdown(false);
+                      }}
+                      className="flex-1 text-left px-4 py-3 text-sm font-semibold text-foreground hover:bg-primary/10 hover:text-primary transition-colors"
+                    >
+                      📍 {loc}
+                    </button>
+                    {pendingLocationToDelete === loc ? (
+                      <div className="flex items-center gap-1 px-2 py-2">
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleRemoveLocation(loc);
+                          }}
+                          disabled={isRemovingLocation}
+                          className="px-2 py-1 text-xs font-semibold rounded-md bg-destructive text-white hover:bg-destructive/90 transition-colors"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setPendingLocationToDelete(null);
+                          }}
+                          className="px-2 py-1 text-xs font-semibold rounded-md bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setPendingLocationToDelete(loc);
+                        }}
+                        disabled={isRemovingLocation}
+                        className="px-3 py-3 text-muted-foreground hover:text-destructive transition-colors"
+                        title={`Remove ${loc}`}
+                        aria-label={`Remove ${loc}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 ))}
                 <button
                   type="button"
@@ -524,32 +610,13 @@ export function JobBubble({
 
       {/* Delete / Actions Footer */}
       <div className="flex border-t border-border bg-muted/20">
-        {confirmDelete ? (
-          <>
-            <button
-              type="button"
-              onClick={onDelete}
-              className="flex-1 py-3 text-xs font-bold text-white bg-destructive hover:bg-destructive/90 transition-colors"
-            >
-              Confirm Delete
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirmDelete(false)}
-              className="flex-1 py-3 text-xs font-semibold text-muted-foreground hover:bg-muted transition-colors flex items-center justify-center gap-1"
-            >
-              <X size={14} /> Cancel
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmDelete(true)}
-            className="flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
-          >
-            <Trash2 size={14} /> Delete
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onDelete}
+          className="flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-colors"
+        >
+          <Trash2 size={14} /> Delete Entry
+        </button>
       </div>
     </div>
   );
