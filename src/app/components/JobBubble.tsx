@@ -352,29 +352,8 @@ export function JobBubble({
           <div className="grid grid-cols-3 gap-2">
             {/* Start Time */}
             <div
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!job.editing) return;
-                const input = e.currentTarget.querySelector("input");
-                if (input) {
-                  if (!job.startTime) {
-                    const now = new Date();
-                    const currentStr = `${String(now.getHours()).padStart(
-                      2,
-                      "0"
-                    )}:${String(now.getMinutes()).padStart(2, "0")}`;
-                    const autoTotal = calcTotal(currentStr, job.stopTime);
-                    onChange({
-                      startTime: currentStr,
-                      totalTime: autoTotal || job.totalTime,
-                      status: job.stopTime ? "completed" : "in-progress",
-                    });
-                  }
-                  if (typeof input.showPicker === "function") input.showPicker();
-                }
-              }}
               className={`flex flex-col gap-1.5 rounded-2xl border border-border bg-muted/40 px-3 py-3 focus-within:border-primary/30 transition-colors ${
-                !job.editing ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+                !job.editing ? "opacity-60 cursor-not-allowed" : ""
               }`}
             >
               <div className="flex items-center justify-between">
@@ -428,29 +407,8 @@ export function JobBubble({
 
             {/* Stop Time */}
             <div
-              onClick={(e) => {
-                e.stopPropagation();
-                if (!job.editing) return;
-                const input = e.currentTarget.querySelector("input");
-                if (input) {
-                  if (!job.stopTime) {
-                    const now = new Date();
-                    const currentStr = `${String(now.getHours()).padStart(
-                      2,
-                      "0"
-                    )}:${String(now.getMinutes()).padStart(2, "0")}`;
-                    const autoTotal = calcTotal(job.startTime, currentStr);
-                    onChange({
-                      stopTime: currentStr,
-                      totalTime: autoTotal || job.totalTime,
-                      status: job.startTime ? "completed" : "not-started",
-                    });
-                  }
-                  if (typeof input.showPicker === "function") input.showPicker();
-                }
-              }}
               className={`flex flex-col gap-1.5 rounded-2xl border border-border bg-muted/40 px-3 py-3 focus-within:border-primary/30 transition-colors ${
-                !job.editing ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+                !job.editing ? "opacity-60 cursor-not-allowed" : ""
               }`}
             >
               <div className="flex items-center justify-between">

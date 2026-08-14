@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { getApiUrl } from '../lib/apiConfig';
+import { toast } from "sonner";
 
 // Helper to reliably get today's date in local time format (YYYY-MM-DD)
 const getTodayDate = () => {
@@ -55,21 +56,32 @@ export default function DeliveryRequestForm() {
     const passedDriver = params.get('driver');
     const passedHrs = params.get('hrs');
     const passedMin = params.get('min');
-    
+    const jobParam = params.get('job');
+
+    // Check if a saved delivery request already exists in localStorage for this job
+    if (jobParam) {
+      const existingSaved = localStorage.getItem(`delivery_request_${jobParam}`);
+      if (existingSaved) {
+        try {
+          return JSON.parse(existingSaved);
+        } catch (e) {}
+      }
+    }
+
     return {
-      job: params.get('job') || '',
+      job: jobParam || '',
       task: params.get('task') || '',
       description: '',
-      date: passedDate || getTodayDate(), // Grabs log date or defaults to today
+      date: passedDate || getTodayDate(), 
       deliverTo: { name: '', company: '', address1: '', address2: '' },
       workFor: { company: '', address1: '', address2: '' },
       instructions: '',
       details: '',
       receivedByName: '',
-      receiveDate: passedDate || getTodayDate(), // Grabs log date or defaults to today
+      receiveDate: passedDate || getTodayDate(), 
       clientSignature: '',
       internalUse: { 
-        driver: passedDriver || '', // Prepopulates the driver field here!
+        driver: passedDriver || '', 
         vehicle: '', 
         zone: '', 
         bill: '', 
@@ -81,18 +93,66 @@ export default function DeliveryRequestForm() {
     };
   });
 
+  // Background sync for offline requests when connection returns
+  useEffect(() => {
+    const handleOnlineSync = async () => {
+      const queue = JSON.parse(localStorage.getItem('offline_delivery_requests_queue') || "[]");
+      if (queue.length === 0) return;
+
+      toast.info("Connection restored. Syncing offline delivery requests...");
+
+      const remainingQueue = [];
+      for (const req of queue) {
+        try {
+          const res = await fetch(getApiUrl('/api/delivery-requests'), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(req),
+          });
+          if (!res.ok) remainingQueue.push(req);
+        } catch (e) {
+          remainingQueue.push(req);
+        }
+      }
+
+      localStorage.setItem('offline_delivery_requests_queue', JSON.stringify(remainingQueue));
+      if (remainingQueue.length === 0) {
+        toast.success("All offline delivery requests successfully synced!");
+      }
+    };
+
+    window.addEventListener('online', handleOnlineSync);
+    return () => window.removeEventListener('online', handleOnlineSync);
+  }, []);
+
+  // Redraw client signature onto canvas if it exists in state
+  useEffect(() => {
+    if (formData.clientSignature && canvasRef.current) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const img = new Image();
+        img.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        };
+        img.src = formData.clientSignature;
+      }
+    }
+  }, [formData.clientSignature]);
+
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>, 
     section?: 'deliverTo' | 'workFor' | 'internalUse', 
     field?: string
   ) => {
     if (section && field) {
-      setFormData(prev => ({
+      setFormData((prev: DeliveryFormState) => ({
         ...prev,
         [section]: { ...prev[section], [field]: e.target.value }
       }));
     } else {
-      setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+      setFormData((prev: DeliveryFormState) => ({ ...prev, [e.target.name]: e.target.value }));
     }
   };
 
@@ -131,7 +191,7 @@ export default function DeliveryRequestForm() {
     setIsDrawing(false);
     const canvas = canvasRef.current;
     if (!canvas) return;
-    setFormData(prev => ({ ...prev, clientSignature: canvas.toDataURL() }));
+    setFormData((prev: DeliveryFormState) => ({ ...prev, clientSignature: canvas.toDataURL() }));
   };
 
   const clearSignature = () => {
@@ -140,7 +200,7 @@ export default function DeliveryRequestForm() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    setFormData(prev => ({ ...prev, clientSignature: '' }));
+    setFormData((prev: DeliveryFormState) => ({ ...prev, clientSignature: '' }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -150,86 +210,134 @@ export default function DeliveryRequestForm() {
       return;
     }
 
+    // 1. Detect if the canvas is completely blank
+    let signatureData = formData.clientSignature;
     const canvas = canvasRef.current;
-    const signatureData = canvas ? canvas.toDataURL() : formData.clientSignature;
-
-    if (!signatureData) {
-      alert('Client signature is required.');
-      return;
+    if (canvas) {
+      const blankCanvas = document.createElement('canvas');
+      blankCanvas.width = canvas.width;
+      blankCanvas.height = canvas.height;
+      
+      if (canvas.toDataURL() === blankCanvas.toDataURL()) {
+        signatureData = '';
+      } else {
+        signatureData = canvas.toDataURL();
+      }
     }
 
+    const payload = {
+      ...formData,
+      jobNumber: formData.job,
+      clientSignature: signatureData,
+      clientEmail: formData.clientEmail,
+    };
+
     try {
+      if (!navigator.onLine) {
+        throw new Error("Offline mode active");
+      }
+
       const response = await fetch(getApiUrl('/api/delivery-requests'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          jobNumber: formData.job,
-          clientSignature: signatureData,
-          clientEmail: formData.clientEmail,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Failed to save delivery request.');
 
-      alert('Delivery request successfully saved!');
-      
-      setFormData({
-        job: '',
-        task: '',
-        description: '',
-        date: getTodayDate(),
-        deliverTo: { name: '', company: '', address1: '', address2: '' },
-        workFor: { company: '', address1: '', address2: '' },
-        instructions: '',
-        details: '',
-        receivedByName: '',
-        receiveDate: getTodayDate(),
-        clientSignature: '',
-        internalUse: { driver: '', vehicle: '', zone: '', bill: '', hrs: '', min: '', by: '' },
-        clientEmail: ''
-      });
-      
-      // Clear the signature canvas drawing
-      clearSignature();
-
-      // Redirect back to the driver delivery log
-      navigate('/');
+      toast.success('Delivery request successfully saved!');
 
     } catch (err: any) {
-      console.error(err);
-      alert(`Error: ${err.message}`);
+      console.warn("Network request failed, saving to offline queue:", err);
+
+      try {
+        const offlineQueue = JSON.parse(localStorage.getItem('offline_delivery_requests_queue') || '[]');
+        offlineQueue.push({ ...payload, queued_at: new Date().toISOString() });
+        localStorage.setItem('offline_delivery_requests_queue', JSON.stringify(offlineQueue));
+
+        toast.warning('You are offline. Delivery request saved locally and will sync automatically when reconnected.');
+      } catch (storageErr) {
+        console.error("Failed to save offline queue:", storageErr);
+        alert(`Error: ${err.message}`);
+        return;
+      }
     }
+
+    // 2. Check if the user actually filled out any form data before locking the job
+    const hasFilledData = 
+      Boolean(signatureData && signatureData.trim() !== '') ||
+      Boolean(formData.deliverTo?.name?.trim()) ||
+      Boolean(formData.deliverTo?.company?.trim()) ||
+      Boolean(formData.deliverTo?.address1?.trim()) ||
+      Boolean(formData.workFor?.company?.trim()) ||
+      Boolean(formData.instructions?.trim()) ||
+      Boolean(formData.details?.trim()) ||
+      Boolean(formData.receivedByName?.trim()) ||
+      Boolean(formData.clientEmail?.trim());
+
+    // Only lock the job if actual data was provided
+    if (hasFilledData) {
+      const lockedJobs = JSON.parse(localStorage.getItem('locked_delivery_jobs') || '[]');
+      if (formData.job && !lockedJobs.includes(formData.job)) {
+        lockedJobs.push(formData.job);
+        localStorage.setItem('locked_delivery_jobs', JSON.stringify(lockedJobs));
+      }
+    }
+
+    // 3. Save to localStorage
+    localStorage.setItem(`delivery_request_${formData.job}`, JSON.stringify({
+      ...formData,
+      clientSignature: signatureData
+    }));
+
+    setFormData({
+      job: '',
+      task: '',
+      description: '',
+      date: getTodayDate(),
+      deliverTo: { name: '', company: '', address1: '', address2: '' },
+      workFor: { company: '', address1: '', address2: '' },
+      instructions: '',
+      details: '',
+      receivedByName: '',
+      receiveDate: getTodayDate(),
+      clientSignature: '',
+      internalUse: { driver: '', vehicle: '', zone: '', bill: '', hrs: '', min: '', by: '' },
+      clientEmail: ''
+    });
+    
+    clearSignature();
+    navigate(-1);
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-4 sm:p-6 bg-white border border-gray-400 shadow-sm my-4 sm:my-6 font-sans text-xs text-black">
+    <div className="w-full max-w-3xl mx-auto p-3 sm:p-6 bg-white border-y sm:border border-gray-400 shadow-sm sm:my-6 font-sans text-xs text-black">
       <form onSubmit={handleSubmit} className="space-y-4">
         
         {/* HEADER SECTION */}
-        <div className="flex flex-row justify-between items-start gap-2 border-b-2 border-black pb-3">
-          <div className="flex-shrink-0">
+        <div className="flex flex-row justify-between items-center gap-2 border-b-2 border-black pb-3">
+          <div className="flex-shrink-0 max-w-[125px] sm:max-w-none">
             <img src="/TGI-logo.png" alt="TGI Direct Logo" className="h-10 sm:h-12 object-contain mb-1" />
-            <div className="font-bold text-[11px] sm:text-sm leading-tight">Marketing Support Services</div>
-            <div className="text-[8px] sm:text-[10px] text-gray-700 leading-tight">
+            <div className="font-bold text-[10px] sm:text-sm leading-tight">Marketing Support Services</div>
+            <div className="text-[7.5px] sm:text-[10px] text-gray-700 leading-tight">
               P.O. Box, Flint, MI 48507-0354<br />
               (800) 337-2237 Fax (810) 239-4321<br />
               www.tgidirect.com
             </div>
           </div>
 
-          <div className="border border-black w-40 sm:w-60 text-center flex-shrink-0">
+          <div className="border border-black w-[190px] sm:w-60 text-center flex-shrink-0">
             <div className="bg-gray-200 border-b border-black font-bold py-0.5 text-[9px] sm:text-xs">
               Delivery Request
             </div>
-            <div className="grid grid-cols-4 divide-x divide-black border-b border-black text-[7px] sm:text-[11px]">
-              <div className="py-0.5 px-0.5 font-semibold min-w-0">Job</div>
-              <div className="py-0.5 px-0.5 font-semibold min-w-0">Task</div>
-              <div className="py-0.5 px-0.5 font-semibold min-w-0">Desc.</div>
-              <div className="py-0.5 px-0.5 font-semibold min-w-0">Date</div>
+            <div className="grid grid-cols-[60px_20px_45px_65px] sm:grid-cols-[65px_35px_50px_65px] divide-x divide-black border-b border-black text-[6px] sm:text-[11px]">
+              <div className="py-0.5 px-0.5 font-semibold min-w-0 text-center">Job</div>
+              <div className="py-0.5 px-0.5 font-semibold min-w-0 text-center">Task</div>
+              <div className="py-0.5 px-0.5 font-semibold min-w-0 text-center">Desc.</div>
+              <div className="py-0.5 px-0.5 font-semibold min-w-0 text-center">Date</div>
             </div>
-            <div className="grid grid-cols-4 divide-x divide-black min-h-[2rem] items-center text-[7px] sm:text-[11px]">
+            <div className="grid grid-cols-[60px_20px_45px_65px] sm:grid-cols-[65px_35px_50px_65px] divide-x divide-black border-b border-black text-[6px] sm:text-[11px]">
               <input
                 type="text"
                 name="job"
@@ -260,7 +368,7 @@ export default function DeliveryRequestForm() {
                 name="date"
                 value={formData.date}
                 onChange={handleChange}
-                className="w-full min-w-0 text-center focus:outline-none bg-transparent px-0 text-[7px] sm:text-[10px] appearance-none [&::-webkit-calendar-picker-indicator]:hidden"
+                className="w-full min-w-0 text-center focus:outline-none bg-transparent px-0 text-[7px] sm:text-[10px] appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-datetime-edit]:flex [&::-webkit-datetime-edit]:justify-center"
               />
             </div>
           </div>
@@ -400,7 +508,7 @@ export default function DeliveryRequestForm() {
 
           <div className="pt-2">
             <div className="font-bold mb-1">Client Signature: *</div>
-            <div className="border border-dashed border-gray-500 bg-gray-50 p-1 inline-block w-full sm:w-auto overflow-x-auto">
+            <div className="border border-dashed border-gray-500 bg-gray-50 p-1 w-full max-w-[450px] mx-auto overflow-hidden">
               <canvas 
                 ref={canvasRef}
                 width={450}
