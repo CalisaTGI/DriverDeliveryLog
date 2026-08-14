@@ -8,4 +8,5 @@
   Run `npm i` to install the dependencies.
 
   Run `npm run dev` to start the development server.
-  
+  Run `npm run server` to start the server.
+  close `npm run dev` and Run `npx vite preview` to test webpage refreshable while offline.
