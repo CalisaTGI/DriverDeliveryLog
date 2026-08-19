@@ -156,18 +156,34 @@ export default function DeliveryRequestForm() {
     }
   };
 
+  const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    
+    const rect = canvas.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+    // Scale coordinates between internal canvas resolution and screen display size
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  };
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 
     setIsDrawing(true);
+    const { x, y } = getCoordinates(e);
     ctx.beginPath();
-    ctx.moveTo(clientX - rect.left, clientY - rect.top);
+    ctx.moveTo(x, y);
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -176,11 +192,9 @@ export default function DeliveryRequestForm() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 
-    ctx.lineTo(clientX - rect.left, clientY - rect.top);
+    const { x, y } = getCoordinates(e);
+    ctx.lineTo(x, y);
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
     ctx.stroke();
@@ -379,13 +393,13 @@ export default function DeliveryRequestForm() {
           <div className="border border-black flex flex-col w-full md:w-1/2">
             <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Deliver To:</div>
             <div className="p-2 space-y-1 flex-1 flex flex-col justify-between">
-              <input 
+              {/* <input 
                 type="text" 
                 placeholder="Recipient Name (e.g. Gary Coulier)" 
                 value={formData.deliverTo.name} 
                 onChange={(e) => handleChange(e, 'deliverTo', 'name')}
                 className="w-full border-b border-dashed border-gray-400 focus:outline-none p-1 text-sm bg-transparent"
-              />
+              /> */}
               <input 
                 type="text" 
                 placeholder="Company Name" 
@@ -413,7 +427,7 @@ export default function DeliveryRequestForm() {
           <div className="border border-black flex flex-col w-full md:w-1/2">
             <div className="bg-gray-200 border-b border-black px-2 py-1 font-bold">Work For:</div>
             <div className="p-2 space-y-1 flex-1 flex flex-col justify-between">
-              <div aria-hidden="true" className="p-1 text-sm invisible select-none">Spacer</div>
+              {/* <div aria-hidden="true" className="p-1 text-sm invisible select-none">Spacer</div> */}
               <input 
                 type="text" 
                 placeholder="Company Name" 
@@ -511,8 +525,8 @@ export default function DeliveryRequestForm() {
             <div className="border border-dashed border-gray-500 bg-gray-50 p-1 w-full max-w-[450px] mx-auto overflow-hidden">
               <canvas 
                 ref={canvasRef}
-                width={450}
-                height={100}
+                width={800}
+                height={400}
                 onMouseDown={startDrawing}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
