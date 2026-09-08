@@ -163,7 +163,6 @@ export function JobBubble({
                 disabled={!job.editing}
                 onChange={(e) => onChange({ task: e.target.value.toUpperCase() })}
                 placeholder="A"
-                maxLength={4}
                 className={`w-full bg-transparent text-sm font-bold font-mono text-foreground focus:outline-none uppercase ${
                   !job.editing ? "cursor-not-allowed" : ""
                 }`}
